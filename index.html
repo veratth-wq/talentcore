@@ -3200,155 +3200,104 @@ function confirmLinkEmail(emailId) {
 
 // ===== DOCUMENTS =====
 function buildDocuments() {
-  const today = new Date();
   const isAdmin = currentRole === 'admin';
+  const cats = ['HR','Payroll','H&S','Field Resources','Other Company Resources'];
 
-  // Expiry helpers
-  function expiryStatus(dateStr) {
-    if (!dateStr) return 'none';
-    const d = new Date(dateStr);
-    const days = Math.ceil((d - today) / 86400000);
+  function expiryStatus(d) {
+    if (!d) return 'none';
+    const days = Math.ceil((new Date(d) - new Date()) / 86400000);
     if (days < 0) return 'expired';
     if (days <= 30) return 'critical';
     if (days <= 90) return 'warning';
     return 'ok';
   }
-  function expiryBadge(dateStr) {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const days = Math.ceil((d - today) / 86400000);
-    const status = expiryStatus(dateStr);
+  function expiryBadge(d) {
+    if (!d) return '';
+    const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+    const s = expiryStatus(d);
     const label = days < 0 ? `Expired ${Math.abs(days)}d ago` : days === 0 ? 'Expires today' : `${days}d remaining`;
-    const colors = { expired:'var(--rose)', critical:'var(--amber)', warning:'#f0a500', ok:'var(--emerald)' };
-    return `<span style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:${colors[status]}22;color:${colors[status]};font-weight:600">${label}</span>`;
+    const col = {expired:'var(--rose)',critical:'var(--amber)',warning:'#f0a500',ok:'var(--emerald)'};
+    return `<span style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:${col[s]}22;color:${col[s]};font-weight:600">${label}</span>`;
   }
 
-  // Count alerts
-  const allEmpDocs = DB.employeeDocs || [];
-  const alerts = allEmpDocs.filter(d => ['expired','critical'].includes(expiryStatus(d.expiryDate)));
+  const activeCat = window._adminDocCat || cats[0];
+
+  const docsInTab = (DB.companyDocs||[]).filter(d => {
+    const c = d.category || 'Other Company Resources';
+    if (activeCat === 'Other Company Resources') return !cats.slice(0,-1).includes(c) || c === 'Other Company Resources';
+    return c === activeCat;
+  });
 
   return `
     <div class="page-header">
       <div>
         <h1>Documents</h1>
-        <p>Company library, employee files & right to work tracking</p>
+        <p>Company document library</p>
       </div>
       <div class="page-actions">
         ${isAdmin ? `
-          <button class="btn-secondary" onclick="checkAllDocLinks()" id="check-links-btn">🔗 Check All Links</button>
-          <button class="btn-secondary" onclick="openAddCompanyDoc()">+ Company Document</button>` : ''}
-        <button class="btn-primary" onclick="openAddEmployeeDoc()">+ My Document</button>
+          <button class="btn-secondary" onclick="checkAllDocLinks()" style="font-size:0.82rem">🔗 Check Links</button>
+          <button class="btn-primary" onclick="openAddCompanyDoc()">+ Add Document</button>` : ''}
       </div>
     </div>
     <div id="link-check-results" style="display:none;margin-bottom:20px"></div>
 
-    ${alerts.length > 0 ? `
-    <div style="background:linear-gradient(135deg,#ff4d4d15,#ff8c0015);border:1px solid var(--rose);border-radius:var(--radius);padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:14px">
-      <svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:var(--rose);flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-      <div>
-        <div style="font-weight:600;color:var(--rose);font-size:0.9rem">${alerts.length} document${alerts.length!==1?'s':''} require attention</div>
-        <div style="font-size:0.8rem;color:var(--mist);margin-top:2px">${alerts.map(d=>{const emp=DB.employees.find(e=>e.id===d.employeeId);return (emp?emp.firstName+' '+emp.lastName:'Unknown')+' — '+d.name;}).join(' • ')}</div>
-      </div>
-    </div>` : ''}
-
-    <!-- Tabs -->
-    <div class="tab-bar" style="margin-bottom:20px">
-      <button class="tab-btn active" onclick="switchDocTab('company',this)">Company Library</button>
-      <button class="tab-btn" onclick="switchDocTab('employee',this)">Employee Documents</button>
-      ${isAdmin ? `<button class="tab-btn" onclick="switchDocTab('rtw',this)">Right to Work</button>` : ''}
+    <!-- Category tabs -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">
+      ${cats.map(cat => {
+        const count = (DB.companyDocs||[]).filter(d => {
+          const c = d.category||'Other Company Resources';
+          return cat==='Other Company Resources' ? (!cats.slice(0,-1).includes(c)||c===cat) : c===cat;
+        }).length;
+        const active = activeCat === cat;
+        return `<button onclick="switchAdminDocCat('${cat}')"
+          style="padding:7px 16px;border-radius:20px;font-size:0.8rem;font-weight:600;cursor:pointer;border:1.5px solid ${active?'var(--emerald)':'var(--cloud)'};background:${active?'var(--emerald)':'transparent'};color:${active?'var(--white)':'var(--slate)'}">
+          ${cat}${count>0?` <span style="opacity:0.75;font-size:0.72rem">(${count})</span>`:''}
+        </button>`;
+      }).join('')}
     </div>
 
-    <!-- Company Library Tab -->
-    <div id="doc-tab-company">
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
-        ${(DB.companyDocs||[]).length === 0 ? `
-          <div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--mist)">
-            <svg viewBox="0 0 24 24" style="width:48px;height:48px;fill:var(--cloud);margin-bottom:12px"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
-            <div style="font-size:0.9rem">No company documents yet</div>
-            ${isAdmin ? `<button class="btn-primary" style="margin-top:12px" onclick="openAddCompanyDoc()">Add First Document</button>` : ''}
-          </div>` :
-          (DB.companyDocs||[]).map(doc => {
-            const status = expiryStatus(doc.expiryDate);
-            const catColors = { policy:'#6366f1', contract:'var(--emerald)', hs:'var(--amber)', other:'var(--slate)' };
-            const catLabels = { policy:'Policy', contract:'Contract Template', hs:'H&S', other:'Other' };
-            return `<div class="card" style="cursor:default">
-              <div style="display:flex;align-items:flex-start;gap:12px">
-                <div style="width:42px;height:42px;border-radius:10px;background:${catColors[doc.category]||'var(--slate)'}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                  <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:${catColors[doc.category]||'var(--slate)'}"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+    <!-- Documents grid -->
+    <div id="admin-doc-grid">
+      ${docsInTab.length === 0 ? `
+        <div style="text-align:center;padding:48px;color:var(--mist);background:var(--snow);border-radius:12px">
+          <div style="font-size:2rem;margin-bottom:8px">📂</div>
+          <div style="font-weight:600;margin-bottom:4px">No ${activeCat} documents yet</div>
+          ${isAdmin ? `<button class="btn-primary" style="margin-top:12px" onclick="openAddCompanyDoc()">+ Add Document</button>` : ''}
+        </div>` :
+        `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+          ${docsInTab.map(doc => {
+            const catColors = {'HR':'#6366f1','Payroll':'var(--emerald)','H&S':'var(--amber)','Field Resources':'#0ea5e9','Other Company Resources':'var(--slate)'};
+            const col = catColors[doc.category]||'var(--slate)';
+            return `<div style="background:var(--white);border:1.5px solid var(--cloud);border-radius:12px;padding:16px">
+              <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+                <div style="width:38px;height:38px;border-radius:9px;background:${col}20;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:${col}"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
                 </div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-weight:600;font-size:0.9rem;margin-bottom:4px">${doc.name}</div>
-                  <div style="font-size:0.75rem;color:var(--mist);margin-bottom:6px">${catLabels[doc.category]||doc.category} ${doc.version ? '• v'+doc.version : ''}</div>
-                  ${doc.expiryDate ? expiryBadge(doc.expiryDate) : ''}
+                  <div style="font-weight:700;font-size:0.88rem;color:var(--ink);margin-bottom:3px">${doc.name}</div>
+                  <div style="font-size:0.72rem;color:var(--mist)">${doc.category||'Other'}${doc.version?' · v'+doc.version:''}</div>
                 </div>
               </div>
-              ${doc.description ? `<div style="font-size:0.78rem;color:var(--fog);margin:10px 0 8px">${doc.description}</div>` : ''}
-              <div style="display:flex;gap:8px;margin-top:12px">
-                ${doc.driveLink ? `<a href="${doc.driveLink}" target="_blank" class="btn-primary" style="font-size:0.78rem;padding:6px 12px;text-decoration:none">Open Document</a>` : ''}
-                ${isAdmin ? `<button class="btn-secondary" style="font-size:0.78rem;padding:6px 10px" onclick="editCompanyDoc('${doc.id}')">Edit</button>` : ''}
-                ${isAdmin ? `<button class="btn-secondary" style="font-size:0.78rem;padding:6px 10px;color:var(--rose)" onclick="deleteCompanyDoc('${doc.id}')">Delete</button>` : ''}
+              ${doc.description?`<div style="font-size:0.78rem;color:var(--fog);margin-bottom:8px">${doc.description}</div>`:''}
+              ${doc.expiryDate?`<div style="margin-bottom:8px">${expiryBadge(doc.expiryDate)}</div>`:''}
+              <div style="font-size:0.72rem;color:var(--mist);margin-bottom:10px">
+                Visible: ${doc.visibleTo==='admin'?'Admins only':doc.visibleTo==='manager'?'Managers & Admins':'All staff'}
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                ${doc.driveLink?`<a href="${doc.driveLink}" target="_blank" style="padding:6px 12px;border-radius:7px;background:var(--emerald);color:var(--white);font-size:0.76rem;font-weight:600;text-decoration:none">Open ↗</a>`:'<span style="font-size:0.74rem;color:var(--mist);padding:6px 0">No link yet</span>'}
+                ${isAdmin?`<button onclick="openAddCompanyDoc('${doc.id}')" style="padding:6px 12px;border-radius:7px;border:1.5px solid var(--cloud);background:none;font-size:0.76rem;cursor:pointer;color:var(--slate)">Edit</button>`:''}
+                ${isAdmin?`<button onclick="deleteCompanyDoc('${doc.id}')" style="padding:6px 10px;border-radius:7px;border:1.5px solid var(--rose);background:none;font-size:0.76rem;cursor:pointer;color:var(--rose)">Delete</button>`:''}
               </div>
             </div>`;
-          }).join('')
-        }
-      </div>
-    </div>
+          }).join('')}
+        </div>`}
+    </div>`;
+}
 
-    <!-- Employee Documents Tab -->
-    <div id="doc-tab-employee" style="display:none">
-      ${isAdmin ? `
-      <div style="margin-bottom:16px">
-        <select onchange="filterEmpDocs(this.value)" style="padding:8px 14px;border-radius:8px;border:1px solid var(--cloud);background:var(--ink-2);color:var(--white);font-size:0.85rem">
-          <option value="">All Employees</option>
-          ${(DB.employees||[]).map(e=>`<option value="${e.id}">${e.firstName} ${e.lastName}</option>`).join('')}
-        </select>
-      </div>` : ''}
-      <div id="emp-docs-list">
-        ${renderEmpDocsList(isAdmin ? null : currentUser?.id, expiryBadge, expiryStatus)}
-      </div>
-    </div>
-
-    <!-- Right to Work Tab -->
-    ${isAdmin ? `
-    <div id="doc-tab-rtw" style="display:none">
-      <div class="card" style="overflow:auto">
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="border-bottom:1px solid var(--cloud)">
-            <th style="text-align:left;padding:10px;font-size:0.78rem;color:var(--mist)">Employee</th>
-            <th style="text-align:left;padding:10px;font-size:0.78rem;color:var(--mist)">Doc Type</th>
-            <th style="text-align:left;padding:10px;font-size:0.78rem;color:var(--mist)">Reference</th>
-            <th style="text-align:left;padding:10px;font-size:0.78rem;color:var(--mist)">Expiry</th>
-            <th style="text-align:left;padding:10px;font-size:0.78rem;color:var(--mist)">Status</th>
-            <th style="padding:10px"></th>
-          </tr></thead>
-          <tbody>
-            ${(DB.employees||[]).map(emp => {
-              const rtw = (DB.employeeDocs||[]).find(d => d.employeeId === emp.id && d.docType === 'rtw');
-              const status = rtw ? expiryStatus(rtw.expiryDate) : 'missing';
-              const statusColors = { ok:'var(--emerald)', warning:'#f0a500', critical:'var(--amber)', expired:'var(--rose)', missing:'var(--rose)', none:'var(--mist)' };
-              const statusLabels = { ok:'Valid', warning:'Expires Soon', critical:'Urgent', expired:'EXPIRED', missing:'Not on File', none:'No Expiry' };
-              return `<tr style="border-bottom:1px solid var(--snow)">
-                <td style="padding:10px">
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <div class="avatar" style="width:30px;height:30px;font-size:0.7rem">${emp.avatar||'??'}</div>
-                    <div>
-                      <div style="font-size:0.85rem;font-weight:500">${emp.firstName} ${emp.lastName}</div>
-                      <div style="font-size:0.72rem;color:var(--mist)">${emp.jobTitle}</div>
-                    </div>
-                  </div>
-                </td>
-                <td style="padding:10px;font-size:0.83rem">${rtw ? rtw.name : '—'}</td>
-                <td style="padding:10px;font-size:0.83rem;color:var(--mist)">${rtw && rtw.reference ? rtw.reference : '—'}</td>
-                <td style="padding:10px;font-size:0.83rem">${rtw && rtw.expiryDate ? rtw.expiryDate : '—'}</td>
-                <td style="padding:10px"><span style="font-size:0.75rem;padding:3px 10px;border-radius:10px;background:${statusColors[status]}22;color:${statusColors[status]};font-weight:600">${statusLabels[status]}</span></td>
-                <td style="padding:10px"><button class="btn-secondary" style="font-size:0.75rem;padding:5px 10px" onclick="openRtwDoc('${emp.id}')">Update</button></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>` : ''}
-  `;
+function switchAdminDocCat(cat) {
+  window._adminDocCat = cat;
+  navigate('documents');
 }
 
 function renderEmpDocsList(filterEmpId, expiryBadge, expiryStatus) {
@@ -3435,38 +3384,39 @@ function filterEmpDocs(empId) {
 // ── Company Doc CRUD ─────────────────────────────────────────────────────────
 function openAddCompanyDoc(docId) {
   const doc = docId ? (DB.companyDocs||[]).find(d=>d.id===docId) : null;
-  const title = doc ? 'Edit Company Document' : 'Add Company Document';
-  openModal(title, `
-    <div class="light-form" style="min-width:340px">
-      <div class="form-group"><label>Document Name *</label><input id="cd-name" value="${doc?doc.name:''}" placeholder="e.g. Employee Handbook 2025" /></div>
-      <div class="form-row">
-        <div class="form-group"><label>Category</label>
-          <select id="cd-cat">
-            <option value="HR" ${doc&&doc.category==='HR'?'selected':''}>HR</option>
-            <option value="Payroll" ${doc&&doc.category==='Payroll'?'selected':''}>Payroll</option>
-            <option value="H&S" ${doc&&doc.category==='H&S'?'selected':''}>H&S</option>
-            <option value="Field Resources" ${doc&&doc.category==='Field Resources'?'selected':''}>Field Resources</option>
-            <option value="Other Company Resources" ${(!doc||!doc.category||doc.category==='Other Company Resources'||doc.category==='other'||doc.category==='policy'||doc.category==='contract')?'selected':''}>Other Company Resources</option>
-          </select>
-        </div>
-        <div class="form-group"><label>Version</label><input id="cd-ver" value="${doc&&doc.version?doc.version:''}" placeholder="e.g. 2.1" /></div>
+  const cats = ['HR','Payroll','H&S','Field Resources','Other Company Resources'];
+  openModal(doc ? 'Edit Document' : 'Add Document', `
+    <div class="light-form" style="min-width:340px;max-width:480px">
+      <div class="form-group">
+        <label>Document Name *</label>
+        <input id="cd-name" value="${doc?doc.name:''}" placeholder="e.g. Health & Safety Policy 2025">
       </div>
       <div class="form-group">
-        <label>Google Drive / SharePoint Link *</label>
-        <input id="cd-link" value="${doc&&doc.driveLink?doc.driveLink:''}" placeholder="https://drive.google.com/file/d/..." />
-        <div style="font-size:0.73rem;color:var(--mist);margin-top:4px">Paste a shareable link — set sharing to "Anyone with the link can view"</div>
+        <label>Category (tab it appears in) *</label>
+        <select id="cd-cat">
+          ${cats.map(c=>`<option value="${c}" ${doc&&doc.category===c?'selected':''}>${c}</option>`).join('')}
+        </select>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Issue Date</label><input type="date" id="cd-issue" value="${doc&&doc.issueDate?doc.issueDate:''}" /></div>
-        <div class="form-group"><label>Expiry Date (optional)</label><input type="date" id="cd-expiry" value="${doc&&doc.expiryDate?doc.expiryDate:''}" /></div>
+      <div class="form-group">
+        <label>Google Drive / SharePoint Link</label>
+        <input id="cd-link" value="${doc&&doc.driveLink?doc.driveLink:''}" placeholder="https://drive.google.com/file/d/...">
+        <div style="font-size:0.72rem;color:var(--mist);margin-top:4px">Set sharing to "Anyone with the link can view"</div>
       </div>
-      <div class="form-group"><label>Description</label><textarea id="cd-desc" rows="2" placeholder="Brief description..." style="width:100%;padding:8px 10px;border:1.5px solid var(--cloud);border-radius:8px;font-size:0.85rem;resize:vertical;font-family:inherit">${doc&&doc.description?doc.description:''}</textarea></div>
-      <div class="form-group"><label>Visible To</label>
+      <div class="form-group">
+        <label>Who can see this?</label>
         <select id="cd-vis">
           <option value="all" ${!doc||doc.visibleTo==='all'?'selected':''}>All Staff</option>
-          <option value="admin" ${doc&&doc.visibleTo==='admin'?'selected':''}>Admins Only</option>
           <option value="manager" ${doc&&doc.visibleTo==='manager'?'selected':''}>Managers & Admins</option>
+          <option value="admin" ${doc&&doc.visibleTo==='admin'?'selected':''}>Admins Only</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label>Expiry Date (optional)</label>
+        <input type="date" id="cd-expiry" value="${doc&&doc.expiryDate?doc.expiryDate:''}">
+      </div>
+      <div class="form-group">
+        <label>Description (optional)</label>
+        <input id="cd-desc" value="${doc&&doc.description?doc.description:''}" placeholder="Brief description">
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeModal()">Cancel</button>
@@ -3481,25 +3431,24 @@ function editCompanyDoc(id) { openAddCompanyDoc(id); }
 function saveCompanyDoc(docId) {
   const name = document.getElementById('cd-name')?.value?.trim();
   if (!name) { showToast('Document name is required','error'); return; }
-  const link = document.getElementById('cd-link')?.value?.trim();
   const isNew = !docId;
   const id = docId || genId('cd');
   const doc = {
     id, name,
-    category: document.getElementById('cd-cat')?.value || 'other',
-    version: document.getElementById('cd-ver')?.value?.trim() || '',
-    driveLink: link,
-    issueDate: document.getElementById('cd-issue')?.value || '',
+    category: document.getElementById('cd-cat')?.value || 'Other Company Resources',
+    driveLink: document.getElementById('cd-link')?.value?.trim() || '',
+    visibleTo: document.getElementById('cd-vis')?.value || 'all',
     expiryDate: document.getElementById('cd-expiry')?.value || '',
     description: document.getElementById('cd-desc')?.value?.trim() || '',
-    visibleTo: document.getElementById('cd-vis')?.value || 'all',
     uploadedBy: currentUser?.id,
-    uploadedAt: new Date().toISOString()
+    uploadedAt: isNew ? new Date().toISOString() : ((DB.companyDocs||[]).find(d=>d.id===docId)?.uploadedAt || new Date().toISOString()),
+    visibleToAll: (document.getElementById('cd-vis')?.value || 'all') === 'all'
   };
   if (!DB.companyDocs) DB.companyDocs = [];
   if (isNew) { DB.companyDocs.push(doc); }
   else { const idx = DB.companyDocs.findIndex(d=>d.id===docId); if(idx>=0) DB.companyDocs[idx]=doc; }
   saveDoc('companyDocs', id, doc);
+  window._adminDocCat = doc.category;
   closeModal();
   navigate('documents');
   showToast(isNew ? 'Document added ✓' : 'Document updated ✓', 'success');
@@ -10452,25 +10401,27 @@ function saveEmpProfile(empId) {
 }
 
 // ── Employee: Documents ──────────────────────────────────────
-const DOC_CATEGORIES = ['HR', 'Payroll', 'H&S', 'Field Resources', 'Other Company Resources'];
+const DOC_CATEGORIES = ['HR','Payroll','H&S','Field Resources','Other Company Resources'];
 
 function renderEmpDocs(activeTab) {
   const panel = document.getElementById('emp-docs');
   if (!panel) return;
-  const emp = window._empRecord;
   const tab = activeTab || window._empDocsTab || 'HR';
   window._empDocsTab = tab;
+  const emp = window._empRecord;
 
-  const allCompanyDocs = (DB.companyDocs||[]).filter(d => d.visibleToAll !== false);
-  const myDocs = emp ? (DB.employeeDocs||[]).filter(d => d.employeeId === emp.id) : [];
+  // Visibility filter based on role
+  const visRoles = currentRole === 'admin' ? ['all','admin','manager'] :
+                   (currentRole === 'manager' || currentRole === 'manager+employee') ? ['all','manager'] :
+                   ['all'];
 
-  // Docs for active tab — "Other Company Resources" also shows my personal uploads
-  const isMyDocsTab = tab === 'Other Company Resources';
-  const tabDocs = allCompanyDocs.filter(d => {
-    const cat = (d.category||'Other Company Resources');
-    if (tab === 'Other Company Resources') return cat === 'Other Company Resources' || !DOC_CATEGORIES.slice(0,-1).includes(cat);
+  const allDocs = (DB.companyDocs||[]).filter(d => visRoles.includes(d.visibleTo||'all'));
+  const tabDocs = allDocs.filter(d => {
+    const cat = d.category || 'Other Company Resources';
+    if (tab === 'Other Company Resources') return !DOC_CATEGORIES.slice(0,-1).includes(cat) || cat === 'Other Company Resources';
     return cat === tab;
   });
+  const myDocs = emp ? (DB.employeeDocs||[]).filter(d => d.employeeId === emp.id) : [];
 
   panel.innerHTML = `
     <div class="mgr-section">
@@ -10481,45 +10432,43 @@ function renderEmpDocs(activeTab) {
 
       <!-- Category tabs -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-        ${DOC_CATEGORIES.map(cat => `
-          <button onclick="renderEmpDocs('${cat}')"
-            style="padding:7px 14px;border-radius:20px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid ${tab===cat?'var(--emerald)':'var(--cloud)'};background:${tab===cat?'var(--emerald)':'var(--white)'};color:${tab===cat?'var(--white)':'var(--slate)'};transition:all 0.15s">
+        ${DOC_CATEGORIES.map(cat => {
+          const active = tab === cat;
+          return `<button onclick="renderEmpDocs('${cat}')"
+            style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid ${active?'var(--emerald)':'var(--cloud)'};background:${active?'var(--emerald)':'var(--white)'};color:${active?'var(--white)':'var(--slate)'}">
             ${cat}
-            ${allCompanyDocs.filter(d=>(d.category||'Other Company Resources')===cat||(cat==='Other Company Resources'&&!DOC_CATEGORIES.slice(0,-1).includes(d.category||''))).length > 0
-              ? `<span style="margin-left:4px;background:${tab===cat?'rgba(255,255,255,0.3)':'rgba(0,184,122,0.12)'};color:${tab===cat?'var(--white)':'var(--emerald)'};border-radius:10px;padding:1px 6px;font-size:0.68rem">${allCompanyDocs.filter(d=>(d.category||'Other Company Resources')===cat||(cat==='Other Company Resources'&&!DOC_CATEGORIES.slice(0,-1).includes(d.category||''))).length}</span>`
-              : ''}
-          </button>`).join('')}
+          </button>`;
+        }).join('')}
       </div>
 
-      <!-- Tab content -->
-      ${tabDocs.length === 0 && !(isMyDocsTab && myDocs.length > 0) ? `
-        <div class="mgr-card" style="text-align:center;padding:28px;color:var(--mist)">
-          <div style="font-size:1.8rem;margin-bottom:8px">📂</div>
+      <!-- Docs for tab -->
+      ${tabDocs.length === 0 ? `
+        <div style="text-align:center;padding:28px;background:var(--snow);border-radius:10px;color:var(--mist)">
+          <div style="font-size:1.6rem;margin-bottom:8px">📂</div>
           <div style="font-weight:600;margin-bottom:4px">No ${tab} documents yet</div>
-          <div style="font-size:0.78rem">HR will upload documents here as they become available</div>
+          <div style="font-size:0.78rem">HR will add documents here as they become available</div>
         </div>` :
         tabDocs.map(d => `
-          <div class="mgr-card" style="margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div>
-                <div style="font-weight:600;font-size:0.88rem;color:var(--ink)">${d.name||d.title||'Document'}</div>
-                <div style="font-size:0.74rem;color:var(--mist);margin-top:2px">${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE',{day:'2-digit',month:'short',year:'numeric'}):''}</div>
+          <div style="background:var(--white);border:1.5px solid var(--cloud);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:0.88rem;color:var(--ink)">${d.name}</div>
+              <div style="font-size:0.72rem;color:var(--mist);margin-top:2px">
+                ${d.description||''}${d.expiryDate?' · Expires: '+d.expiryDate:''}
               </div>
-              ${d.url ? `<a href="${d.url}" target="_blank" style="padding:6px 14px;border-radius:8px;background:var(--emerald);color:var(--white);font-size:0.76rem;font-weight:600;text-decoration:none">View</a>` : '<span style="font-size:0.74rem;color:var(--mist)">No link</span>'}
             </div>
+            ${d.driveLink
+              ? `<a href="${d.driveLink}" target="_blank" style="flex-shrink:0;padding:7px 14px;border-radius:8px;background:var(--emerald);color:var(--white);font-size:0.76rem;font-weight:600;text-decoration:none">Open ↗</a>`
+              : '<span style="font-size:0.74rem;color:var(--mist)">No link</span>'}
           </div>`).join('')}
 
-      ${isMyDocsTab ? `
+      ${tab === 'Other Company Resources' && myDocs.length > 0 ? `
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--cloud)">
-          <div style="font-size:0.78rem;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">My Uploaded Documents</div>
-          ${myDocs.length === 0 ?
-            `<div class="mgr-card" style="text-align:center;padding:16px;color:var(--mist);font-size:0.82rem">You haven't uploaded any documents yet</div>` :
-            myDocs.map(d=>`
-              <div class="mgr-card" style="margin-bottom:8px">
-                <div style="font-weight:600;font-size:0.85rem">${d.name||'Document'}</div>
-                <div style="font-size:0.74rem;color:var(--mist)">${d.type||''} · ${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE'):''} · <span style="color:var(--amber)">${d.status||'pending'}</span></div>
-                ${d.notes?`<div style="font-size:0.74rem;font-style:italic;color:var(--slate);margin-top:2px">${d.notes}</div>`:''}
-              </div>`).join('')}
+          <div style="font-size:0.76rem;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">My Uploaded Documents</div>
+          ${myDocs.map(d=>`
+            <div style="background:var(--snow);border-radius:8px;padding:10px 12px;margin-bottom:6px">
+              <div style="font-weight:600;font-size:0.84rem">${d.name}</div>
+              <div style="font-size:0.72rem;color:var(--mist)">${d.type||''} · ${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE'):''} · <span style="color:var(--amber)">${d.status||'pending'}</span></div>
+            </div>`).join('')}
         </div>` : ''}
     </div>`;
 }
