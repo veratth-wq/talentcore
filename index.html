@@ -5444,8 +5444,6 @@ function saveNewUser() {
   const pass2 = document.getElementById('nu-pass2')?.value;
   const role = document.getElementById('nu-role')?.value;
   const title = document.getElementById('nu-title')?.value.trim();
-  const excavationId = document.getElementById('nu-excavation')?.value;
-
   if (!name || !email || !pass) { showToast('Please fill in all required fields', 'error'); return; }
   if (pass !== pass2) { showToast('Passwords do not match', 'error'); return; }
   if (pass.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
