@@ -3234,10 +3234,13 @@ function buildDocuments() {
         <p>Company library, employee files & right to work tracking</p>
       </div>
       <div class="page-actions">
-        ${isAdmin ? `<button class="btn-secondary" onclick="openAddCompanyDoc()">+ Company Document</button>` : ''}
+        ${isAdmin ? `
+          <button class="btn-secondary" onclick="checkAllDocLinks()" id="check-links-btn">🔗 Check All Links</button>
+          <button class="btn-secondary" onclick="openAddCompanyDoc()">+ Company Document</button>` : ''}
         <button class="btn-primary" onclick="openAddEmployeeDoc()">+ My Document</button>
       </div>
     </div>
+    <div id="link-check-results" style="display:none;margin-bottom:20px"></div>
 
     ${alerts.length > 0 ? `
     <div style="background:linear-gradient(135deg,#ff4d4d15,#ff8c0015);border:1px solid var(--rose);border-radius:var(--radius);padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:14px">
@@ -11400,4 +11403,151 @@ DEFAULT_JOB_CODES.push(
   {code:'BD1',desc:'Tenders and Proposals',cat:'Admin & Business Dev'},
   {code:'BD2',desc:'Marketing (social media, client meetings, memberships)',cat:'Admin & Business Dev'}
 );
+</script>
+<script>
+// ===== DOCUMENT LINK HEALTH CHECK =====
+async function checkAllDocLinks() {
+  const docs = (DB.companyDocs||[]).filter(d => d.driveLink);
+  const btn = document.getElementById('check-links-btn');
+  const resultsEl = document.getElementById('link-check-results');
+
+  if (docs.length === 0) {
+    showToast('No documents with links to check', 'error');
+    return;
+  }
+
+  // Show progress
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking…'; }
+  if (resultsEl) { resultsEl.style.display = 'block'; resultsEl.innerHTML = `
+    <div style="background:rgba(0,184,122,0.06);border:1.5px solid var(--cloud);border-radius:10px;padding:14px 18px">
+      <div style="font-weight:600;font-size:0.88rem;color:var(--ink);margin-bottom:8px">🔗 Checking ${docs.length} link${docs.length!==1?'s':''}…</div>
+      <div id="link-check-progress" style="font-size:0.8rem;color:var(--mist)">Starting…</div>
+    </div>`; }
+
+  const results = { ok: [], broken: [], unknown: [] };
+
+  for (let i = 0; i < docs.length; i++) {
+    const doc = docs[i];
+    const progressEl = document.getElementById('link-check-progress');
+    if (progressEl) progressEl.textContent = `Checking ${i+1} of ${docs.length}: ${doc.name}…`;
+
+    const status = await checkSingleLink(doc.driveLink);
+    doc._linkStatus = status;
+    if (status === 'ok') results.ok.push(doc);
+    else if (status === 'broken') results.broken.push(doc);
+    else results.unknown.push(doc);
+
+    // Small delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  // Render results
+  if (btn) { btn.disabled = false; btn.textContent = '🔗 Check All Links'; }
+  renderLinkCheckResults(results, docs.length);
+
+  // Persist link status back to Firebase
+  docs.forEach(doc => {
+    doc.lastLinkCheck = new Date().toISOString();
+    saveDoc('companyDocs', doc.id, doc);
+  });
+}
+
+async function checkSingleLink(url) {
+  if (!url || !url.startsWith('http')) return 'broken';
+  try {
+    // We can't fetch cross-origin directly, so we use a HEAD request via no-cors
+    // no-cors always "succeeds" (opaque response) — but a fetch error means the
+    // URL is completely unreachable (malformed, DNS failure, etc.)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    await fetch(url, { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
+    clearTimeout(timeout);
+    // no-cors gives opaque response — we can't read status but no throw = reachable host
+    return 'unknown'; // reachable but can't confirm file exists (Drive auth wall)
+  } catch (e) {
+    if (e.name === 'AbortError') return 'unknown'; // timeout — host may be fine
+    return 'broken'; // network error — URL is genuinely unreachable
+  }
+}
+
+function renderLinkCheckResults(results, total) {
+  const el = document.getElementById('link-check-results');
+  if (!el) return;
+
+  const hasBroken = results.broken.length > 0;
+  const hasUnknown = results.unknown.length > 0;
+
+  el.innerHTML = `
+    <div style="border:1.5px solid ${hasBroken?'var(--rose)':'var(--cloud)'};border-radius:10px;padding:16px 18px;background:${hasBroken?'rgba(239,68,68,0.04)':'rgba(0,184,122,0.04)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:700;font-size:0.92rem;color:var(--ink)">
+          🔗 Link Check Complete — ${new Date().toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'})}
+        </div>
+        <button onclick="document.getElementById('link-check-results').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--mist);font-size:1rem">✕</button>
+      </div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="background:rgba(0,184,122,0.1);border-radius:8px;padding:8px 14px;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:var(--emerald)">${results.ok.length}</div>
+          <div style="font-size:0.72rem;color:var(--mist)">Confirmed OK</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.1);border-radius:8px;padding:8px 14px;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:var(--amber)">${results.unknown.length}</div>
+          <div style="font-size:0.72rem;color:var(--mist)">Needs Verification</div>
+        </div>
+        <div style="background:rgba(239,68,68,0.1);border-radius:8px;padding:8px 14px;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:var(--rose)">${results.broken.length}</div>
+          <div style="font-size:0.72rem;color:var(--mist)">Broken / Unreachable</div>
+        </div>
+      </div>
+
+      ${results.broken.length > 0 ? `
+        <div style="margin-bottom:10px">
+          <div style="font-size:0.78rem;font-weight:700;color:var(--rose);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">⚠ Broken Links — Action Required</div>
+          ${results.broken.map(d=>`
+            <div style="background:var(--white);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div>
+                <div style="font-weight:600;font-size:0.84rem;color:var(--ink)">${d.name}</div>
+                <div style="font-size:0.72rem;color:var(--rose);word-break:break-all;margin-top:2px">${d.driveLink}</div>
+              </div>
+              <button onclick="editCompanyDoc('${d.id}')" style="flex-shrink:0;padding:5px 10px;border-radius:6px;border:1px solid var(--rose);background:none;color:var(--rose);font-size:0.75rem;cursor:pointer;font-weight:600">Fix Link</button>
+            </div>`).join('')}
+        </div>` : ''}
+
+      ${results.unknown.length > 0 ? `
+        <div style="margin-bottom:6px">
+          <div style="font-size:0.78rem;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">⚡ Needs Manual Verification</div>
+          <div style="font-size:0.78rem;color:var(--slate);background:rgba(245,158,11,0.08);border-radius:8px;padding:8px 12px;margin-bottom:8px">
+            These links reached a valid host but the file could not be confirmed (Google/SharePoint require sign-in to verify). Click each to check manually.
+          </div>
+          ${results.unknown.map(d=>`
+            <div style="background:var(--white);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div>
+                <div style="font-weight:600;font-size:0.84rem;color:var(--ink)">${d.name}</div>
+                <div style="font-size:0.72rem;color:var(--mist);margin-top:2px">${d.category||'—'}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0">
+                <a href="${d.driveLink}" target="_blank" style="padding:5px 10px;border-radius:6px;border:1px solid var(--amber);background:none;color:var(--amber);font-size:0.75rem;cursor:pointer;font-weight:600;text-decoration:none">Test ↗</a>
+                <button onclick="markDocLinkOk('${d.id}')" style="padding:5px 10px;border-radius:6px;border:1px solid var(--emerald);background:none;color:var(--emerald);font-size:0.75rem;cursor:pointer;font-weight:600">✓ OK</button>
+                <button onclick="editCompanyDoc('${d.id}')" style="padding:5px 10px;border-radius:6px;border:1px solid var(--slate);background:none;color:var(--slate);font-size:0.75rem;cursor:pointer;font-weight:600">Fix</button>
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+
+      ${results.broken.length === 0 && results.unknown.length === 0 ? `
+        <div style="text-align:center;padding:8px;font-size:0.85rem;color:var(--emerald);font-weight:600">✅ All ${total} links are reachable</div>` : ''}
+    </div>`;
+}
+
+function markDocLinkOk(docId) {
+  const doc = (DB.companyDocs||[]).find(d => d.id === docId);
+  if (!doc) return;
+  doc._linkStatus = 'ok';
+  doc.lastLinkCheck = new Date().toISOString();
+  saveDoc('companyDocs', docId, doc);
+  showToast('Marked as OK ✓', 'success');
+  // Re-render results — remove from unknown list
+  const unknownItems = document.querySelectorAll('[data-doc-id="'+docId+'"]');
+  unknownItems.forEach(el => el.remove());
+}
 </script>
