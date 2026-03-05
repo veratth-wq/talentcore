@@ -768,6 +768,9 @@ tbody td { padding: 12px 16px; font-size: 0.86rem; color: var(--ink-2); vertical
         <div style="font-family:var(--font-display);font-weight:700;font-size:1rem;color:var(--white)" id="mgr-portal-title">Site Director Portal</div>
         <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)" id="mgr-user-name"></div>
       </div>
+      <button id="switch-portal-btn" class="icon-btn" onclick="switchPortal()" title="Switch portal" style="display:none;margin-right:4px">
+        <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+      </button>
       <button class="icon-btn" onclick="logout()" title="Log out">
         <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"></path></svg>
       </button>
@@ -1202,6 +1205,8 @@ function logout() {
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('login-email').value = '';
   document.getElementById('login-password').value = '';
+  const chooser = document.getElementById('portal-chooser');
+  if (chooser) chooser.classList.remove('active');
   const gdpr = document.getElementById('gdpr-banner');
   if (gdpr) gdpr.remove();
 }
@@ -1217,10 +1222,80 @@ function hardReset(){
 }
 function proceedToApp(){
   document.getElementById("login-screen").classList.remove("active");
-  if(currentRole==="manager"){document.getElementById("manager-app").classList.add("active");renderManagerApp();}
-  else if(currentRole==="employee"){document.getElementById("manager-app").classList.add("active");renderEmployeeApp();}
-  else{document.getElementById("main-app").classList.add("active");var b=document.getElementById("user-badge");if(b)b.innerHTML="<strong>"+currentUser.name+"</strong><br>"+currentUser.title;applyNavPermissions();navigate("dashboard");if(!DB.settings.gdprAccepted)showGdprBanner();}
+  if(currentRole==="manager+employee"){
+    // Show portal chooser
+    showPortalChooser();
+  } else if(currentRole==="manager"){
+    document.getElementById("manager-app").classList.add("active");renderManagerApp();
+  } else if(currentRole==="employee"){
+    document.getElementById("manager-app").classList.add("active");renderEmployeeApp();
+  } else {
+    document.getElementById("main-app").classList.add("active");
+    var b=document.getElementById("user-badge");
+    if(b)b.innerHTML="<strong>"+currentUser.name+"</strong><br>"+currentUser.title;
+    applyNavPermissions();navigate("dashboard");
+    if(!DB.settings.gdprAccepted)showGdprBanner();
+  }
   showToast("Welcome back, "+currentUser.name.split(" ")[0]+"!","success");
+}
+
+function showPortalChooser() {
+  document.getElementById("login-screen").classList.remove("active");
+  // Create or show chooser screen
+  let chooser = document.getElementById('portal-chooser');
+  if (!chooser) {
+    chooser = document.createElement('div');
+    chooser.id = 'portal-chooser';
+    chooser.className = 'screen';
+    chooser.style.cssText = 'background:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px';
+    document.body.appendChild(chooser);
+  }
+  // Hide other screens
+  document.getElementById('manager-app').classList.remove('active');
+  document.getElementById('main-app').classList.remove('active');
+  chooser.classList.add('active');
+  chooser.innerHTML = `
+    <div style="text-align:center;margin-bottom:32px">
+      <div class="brand-mark" style="margin:0 auto 16px">TC</div>
+      <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--white)">Welcome, ${currentUser.name.split(' ')[0]}</div>
+      <div style="font-size:0.85rem;color:rgba(255,255,255,0.5);margin-top:6px">Select which portal you'd like to access</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px">
+      <button onclick="launchPortal('manager')" style="background:var(--emerald);border:none;border-radius:14px;padding:20px 24px;cursor:pointer;text-align:left;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+        <div style="font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--white);margin-bottom:4px">👥 Manager Portal</div>
+        <div style="font-size:0.8rem;color:rgba(255,255,255,0.7)">Manage your team — timesheets, leave approvals, feedback & reports</div>
+      </button>
+      <button onclick="launchPortal('employee')" style="background:#1e3a5f;border:2px solid rgba(96,165,250,0.4);border-radius:14px;padding:20px 24px;cursor:pointer;text-align:left;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+        <div style="font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--white);margin-bottom:4px">👤 Employee Portal</div>
+        <div style="font-size:0.8rem;color:rgba(255,255,255,0.7)">Your personal data — payslips, leave requests, timesheets & profile</div>
+      </button>
+      <button onclick="logout()" style="background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:12px;cursor:pointer;color:rgba(255,255,255,0.5);font-size:0.82rem">
+        ← Sign out
+      </button>
+    </div>`;
+}
+
+function launchPortal(portalRole) {
+  const chooser = document.getElementById('portal-chooser');
+  if (chooser) chooser.classList.remove('active');
+  document.getElementById("manager-app").classList.add("active");
+  if (portalRole === 'manager') {
+    renderManagerApp();
+  } else {
+    renderEmployeeApp();
+  }
+  // Show switch button for dual-role users
+  const switchBtn = document.getElementById('switch-portal-btn');
+  if (switchBtn && currentRole === 'manager+employee') {
+    switchBtn.style.display = '';
+    switchBtn.title = portalRole === 'manager' ? 'Switch to Employee Portal' : 'Switch to Manager Portal';
+    switchBtn._currentPortal = portalRole;
+  }
+}
+
+function switchPortal() {
+  document.getElementById("manager-app").classList.remove("active");
+  showPortalChooser();
 }
 var forgotStep=1;
 function showForgotPassword(){var s=document.getElementById("panel-signin"),f=document.getElementById("panel-forgot"),p=document.getElementById("panel-security");if(s)s.style.display="none";if(f)f.style.display="block";if(p)p.style.display="none";forgotStep=1;["forgot-email","forgot-answer"].forEach(function(id){var e=document.getElementById(id);if(e)e.value="";});["forgot-security-wrap","forgot-newpass-wrap","forgot-newpass2-wrap","forgot-error","forgot-success"].forEach(function(id){var e=document.getElementById(id);if(e)e.style.display="none";});var fb=document.getElementById("forgot-btn");if(fb){fb.textContent="Continue";fb.style.display="block";}}
@@ -5262,7 +5337,7 @@ function finaliseApplicantImport() {
 // ===== USER MANAGEMENT PAGE =====
 function buildUsersPage() {
   if (currentRole !== 'admin') return '<div class="page-header"><h1>Access Denied</h1></div>';
-  const roleColors = { admin: 'badge-violet', manager: 'badge-blue', employee: 'badge-green' };
+  const roleColors = { admin: 'badge-violet', manager: 'badge-blue', employee: 'badge-green', 'manager+employee': 'badge-amber' };
   return `
     <div class="page-header">
       <div><h1>User Management</h1><p>Manage logins, roles and excavation assignments for all staff</p></div>
@@ -5341,7 +5416,7 @@ function renderUserRows(users) {
         </div>
       </td>
       <td>${u.email}</td>
-      <td><span class="badge ${roleColors[u.role]||'badge-gray'}">${u.role}</span></td>
+      <td><span class="badge ${roleColors[u.role]||'badge-gray'}" style="font-size:0.72rem">${u.role==='manager+employee'?'Manager + Employee':u.role}</span></td>
       <td>${u.title||'—'}</td>
       <td>${ex ? `<span class="badge badge-amber" style="font-size:0.72rem">🏺 ${ex.name}</span>` : '<span style="color:var(--fog);font-size:0.82rem">—</span>'}</td>
       <td><span class="badge ${u.active!==false?'badge-green':'badge-rose'}">${u.active!==false?'Active':'Inactive'}</span></td>
@@ -5404,8 +5479,9 @@ function openAddUser() {
       <div class="form-row">
         <div class="form-group"><label>Role *</label>
           <select id="nu-role">
-            <option value="employee">Employee — Self-service portal</option>
-            <option value="manager">Manager / Site Director — Timesheets + Leave + Team</option>
+            <option value="employee">Employee — Self-service portal only</option>
+            <option value="manager">Manager — Team management + own timesheets</option>
+            <option value="manager+employee">Manager + Employee — Two portals, one login</option>
             <option value="admin">Admin — Full access</option>
           </select>
         </div>
@@ -5483,9 +5559,10 @@ function editUser(userId) {
       <div class="form-row">
         <div class="form-group"><label>Role</label>
           <select id="eu-role">
-            <option value="employee" ${u.role==='employee'?'selected':''}>Employee</option>
-            <option value="manager" ${u.role==='manager'?'selected':''}>Manager</option>
-            <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+            <option value="employee" ${u.role==='employee'?'selected':''}>Employee — Self-service portal only</option>
+            <option value="manager" ${u.role==='manager'?'selected':''}>Manager — Team management + own timesheets</option>
+            <option value="manager+employee" ${u.role==='manager+employee'?'selected':''}>Manager + Employee — Two portals, one login</option>
+            <option value="admin" ${u.role==='admin'?'selected':''}>Admin — Full access</option>
           </select>
         </div>
         <div class="form-group"><label>Excavation Site</label>
