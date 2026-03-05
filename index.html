@@ -5362,8 +5362,30 @@ function filterUserTable(query, roleFilter) {
 }
 
 function openAddUser() {
+  // Sort employees alphabetically, exclude those who already have a login
+  const existingEmails = DB.users.map(u => u.email.toLowerCase());
+  const availableEmps = [...DB.employees]
+    .filter(e => e.status === 'active')
+    .sort((a,b) => (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName));
+
   openModal('Add New User', `
     <div class="light-form">
+
+      <!-- Employee picker -->
+      <div class="form-group">
+        <label>Select Employee <span style="color:var(--mist);font-weight:400">(auto-fills details)</span></label>
+        <select id="nu-emp-pick" onchange="prefillUserFromEmployee()">
+          <option value="">— Type manually or pick an employee —</option>
+          ${availableEmps.map(e => `<option value="${e.id}">${e.firstName} ${e.lastName} — ${e.jobTitle} (${e.department})</option>`).join('')}
+        </select>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin:4px 0 12px">
+        <div style="flex:1;height:1px;background:var(--cloud)"></div>
+        <span style="font-size:0.72rem;color:var(--mist)">or fill in manually</span>
+        <div style="flex:1;height:1px;background:var(--cloud)"></div>
+      </div>
+
       <div class="form-row">
         <div class="form-group"><label>Full Name *</label><input id="nu-name" placeholder="Séan Murphy" /></div>
         <div class="form-group"><label>Job Title</label><input id="nu-title" placeholder="Field Archaeologist" /></div>
@@ -5376,24 +5398,43 @@ function openAddUser() {
       <div class="form-row">
         <div class="form-group"><label>Role *</label>
           <select id="nu-role">
-            <option value="employee">Employee (Self-service only)</option>
-            <option value="manager">Manager / Site Director (Timesheets + Leave)</option>
-            <option value="admin">Admin (Full access)</option>
+            <option value="employee">Employee — Self-service portal</option>
+            <option value="manager">Manager / Site Director — Timesheets + Leave + Team</option>
+            <option value="admin">Admin — Full access</option>
           </select>
         </div>
-        <div class="form-group"><label>Excavation Site</label>
-          <select id="nu-excavation">
-            <option value="">— None —</option>
-            ${(DB.excavations||[]).map(ex => `<option value="${ex.id}">${ex.name} (${ex.location})</option>`).join('')}
-          </select>
+        <div class="form-group"><label>Site / Department</label>
+          <input id="nu-site" placeholder="e.g. Barry Lacey Site" />
         </div>
+      </div>
+      <div class="form-group" style="display:none">
+        <input id="nu-emp-id" type="hidden">
+        <input id="nu-excavation" type="hidden" value="">
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveNewUser()">Create User</button>
+      <button class="btn-primary" onclick="saveNewUser()">Create Login</button>
     </div>
   `);
+}
+
+function prefillUserFromEmployee() {
+  const empId = document.getElementById('nu-emp-pick')?.value;
+  if (!empId) return;
+  const emp = DB.employees.find(e => e.id === empId);
+  if (!emp) return;
+  const nameInp  = document.getElementById('nu-name');
+  const emailInp = document.getElementById('nu-email');
+  const titleInp = document.getElementById('nu-title');
+  const siteInp  = document.getElementById('nu-site');
+  const empIdInp = document.getElementById('nu-emp-id');
+  if (nameInp)  nameInp.value  = emp.firstName + ' ' + emp.lastName;
+  if (emailInp) emailInp.value = emp.email || '';
+  if (titleInp) titleInp.value = emp.jobTitle || '';
+  if (siteInp)  siteInp.value  = emp.department || emp.site || '';
+  if (empIdInp) empIdInp.value = emp.id;
+  showToast('Details filled from employee record ✓', 'success');
 }
 
 function saveNewUser() {
@@ -5410,9 +5451,12 @@ function saveNewUser() {
   if (pass.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
   if (DB.users.find(u => u.email.toLowerCase() === email)) { showToast('A user with this email already exists', 'error'); return; }
 
+  const excavationId = document.getElementById('nu-excavation')?.value || '';
+  const site = document.getElementById('nu-site')?.value.trim() || '';
+  const linkedEmpId = document.getElementById('nu-emp-id')?.value || '';
   const avatar = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   hashPassword(pass).then(hashed => {
-    const newUser = { id: genId('u'), name, email, password: hashed, role, title, avatar, active: true, excavationId, createdAt: new Date().toISOString() };
+    const newUser = { id: genId('u'), name, email, password: hashed, role, title, avatar, active: true, excavationId, site, linkedEmployeeId: linkedEmpId, createdAt: new Date().toISOString() };
     DB.users.push(newUser);
     saveData(DB);
     writeAuditLog(currentUser?.name, currentUser?.id, 'SYSTEM', `New user created: ${name} (${role})`);
@@ -9766,11 +9810,12 @@ function renderManagerApp() {
 }
 
 function getMgrTeam() {
-  // Manager sees employees on their site, or all if no site set
   const site = currentUser?.site || currentUser?.excavationId;
   if (!site) return DB.employees.filter(e => e.status === 'active');
   return DB.employees.filter(e => e.status === 'active' &&
-    (e.site === site || e.department === site || e.excavationId === site));
+    (e.site === site || e.department === site || e.excavationId === site ||
+     (site && (e.site||'').toLowerCase().includes(site.toLowerCase())) ||
+     (site && (e.department||'').toLowerCase().includes(site.toLowerCase()))));
 }
 
 function mgrTab(tabId, btn) {
@@ -10047,6 +10092,7 @@ function renderEmployeeApp() {
 
   // Find the employee record linked to this user
   window._empRecord = DB.employees.find(e =>
+    e.id === currentUser?.linkedEmployeeId ||
     e.email?.toLowerCase() === currentUser?.email?.toLowerCase() ||
     e.worksNumber === currentUser?.worksNumber
   ) || null;
