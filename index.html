@@ -797,6 +797,7 @@ tbody td { padding: 12px 16px; font-size: 0.86rem; color: var(--ink-2); vertical
     <div id="mgr-location" class="mgr-panel"></div>
     <div id="emp-payslips" class="mgr-panel"></div>
     <div id="emp-leave" class="mgr-panel"></div>
+    <div id="emp-timesheets" class="mgr-panel"></div>
     <div id="emp-profile" class="mgr-panel"></div>
     <div id="emp-docs" class="mgr-panel"></div>
   </div>
@@ -829,7 +830,7 @@ const FIREBASE_CONFIG = {
 
 const FIREBASE_CONFIGURED = true;
 const LS_KEY = 'talentcore_v4';
-const COLS = ['users','excavations','jobs','applicants','employees','leaveRequests','projects','locationUpdates','emails','interviews','companyDocs','employeeDocs','timesheets','auditLog'];
+const COLS = ['users','excavations','jobs','applicants','employees','leaveRequests','projects','locationUpdates','emails','interviews','companyDocs','employeeDocs','timesheets','auditLog','personalTimesheets'];
 
 let db = null;
 let dbListeners = [];
@@ -9831,6 +9832,7 @@ function mgrTab(tabId, btn) {
   if (tabId === 'emp-payslips')   renderEmpPayslips();
   if (tabId === 'emp-leave')      renderEmpLeave();
   if (tabId === 'emp-profile')    renderEmpProfile();
+  if (tabId === 'emp-timesheets') renderEmpTimesheets();
   if (tabId === 'emp-docs')       renderEmpDocs();
 }
 
@@ -10108,6 +10110,10 @@ function renderEmployeeApp() {
     <button class="mgr-tab" data-tab="emp-profile" onclick="mgrTab('emp-profile', this)">
       <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
       My Profile
+    </button>
+    <button class="mgr-tab" data-tab="emp-timesheets" onclick="mgrTab('emp-timesheets', this)">
+      <svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+      Timesheets
     </button>
     <button class="mgr-tab" data-tab="emp-docs" onclick="mgrTab('emp-docs', this)">
       <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
@@ -10419,7 +10425,840 @@ function saveEmpDoc(empId) {
   renderEmpDocs();
 }
 
+
+// ===== JOB CODES =====
+const DEFAULT_JOB_CODES = [
+  // FIELDWORK
+  {code:'FW1',desc:'Licence Applications',cat:'Fieldwork'},
+  {code:'FW1',desc:'Site Visit',cat:'Fieldwork'},
+  {code:'FW1',desc:'Licence Application (Geophys/Testing/Excavation)',cat:'Fieldwork'},
+  {code:'FW2',desc:'Project Set Up/Demob',cat:'Fieldwork'},
+  {code:'FW2',desc:'H&S',cat:'Fieldwork'},
+  {code:'FW2',desc:'Review of Project Info',cat:'Fieldwork'},
+  {code:'FW2',desc:'Prep for Site',cat:'Fieldwork'},
+  {code:'FW2',desc:'Co-Ordinates Setout',cat:'Fieldwork'},
+  {code:'FW2',desc:'Site Set Up',cat:'Fieldwork'},
+  {code:'FW2',desc:'Demobilisation',cat:'Fieldwork'},
+  {code:'FW2',desc:'Collection/Delivery of Samples',cat:'Fieldwork'},
+  {code:'FW3',desc:'Test Trenching Site Works',cat:'Fieldwork'},
+  {code:'FW3',desc:'Setting Out',cat:'Fieldwork'},
+  {code:'FW3',desc:'Test-Trenching',cat:'Fieldwork'},
+  {code:'FW3',desc:'Survey Pick Up',cat:'Fieldwork'},
+  {code:'FW4',desc:'Testing Report Writing',cat:'Fieldwork'},
+  {code:'FW4',desc:'Process Survey',cat:'Fieldwork'},
+  {code:'FW4',desc:'Testing Fig Production',cat:'Fieldwork'},
+  {code:'FW4',desc:'Testing Report Review/Editing',cat:'Fieldwork'},
+  {code:'FW4',desc:'Testing Report Print & Bind',cat:'Fieldwork'},
+  {code:'FW5',desc:'Stage 2 Setting Out',cat:'Fieldwork'},
+  {code:'FW5',desc:'Stage 2 Site Work (specify site)',cat:'Fieldwork'},
+  {code:'FW5',desc:'Stage 2 Survey Pick Up',cat:'Fieldwork'},
+  {code:'FW5',desc:'Drone Survey',cat:'Fieldwork'},
+  {code:'FW5',desc:'Photogrammetry',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Archive Check (specify site)',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Type Registers (specify site)',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Process Survey (specify site)',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Figure Production (specify site)',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Report Production (specify site)',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Report Review/Editing',cat:'Fieldwork'},
+  {code:'FW6',desc:'Stage 2 Print & Bind',cat:'Fieldwork'},
+  {code:'FW7',desc:'Stage 3 Setting Out (specify site)',cat:'Fieldwork'},
+  {code:'FW7',desc:'Stage 3 Excavation (specify site)',cat:'Fieldwork'},
+  {code:'FW7',desc:'Stage 3 Survey Pick Up (specify site)',cat:'Fieldwork'},
+  {code:'FW7',desc:'Stage 3 Survey Processing (specify site)',cat:'Fieldwork'},
+  {code:'FW7',desc:'Drone Survey',cat:'Fieldwork'},
+  {code:'FW7',desc:'Photogrammetry',cat:'Fieldwork'},
+  {code:'FW8',desc:'Monitoring (specify site)',cat:'Fieldwork'},
+  {code:'FW8',desc:'Monitoring Survey Pick Up',cat:'Fieldwork'},
+  {code:'FW9',desc:'Type Monitoring Notes',cat:'Fieldwork'},
+  {code:'FW9',desc:'Monitoring Report Writing',cat:'Fieldwork'},
+  {code:'FW9',desc:'Monitoring Process Survey',cat:'Fieldwork'},
+  {code:'FW9',desc:'Monitoring Figure Production',cat:'Fieldwork'},
+  {code:'FW9',desc:'Monitoring Report Review/Editing',cat:'Fieldwork'},
+  {code:'FW9',desc:'Monitoring Report Print & Bind',cat:'Fieldwork'},
+  {code:'FW10',desc:'Geophysical Survey Set Out',cat:'Fieldwork'},
+  {code:'FW10',desc:'Geophysical Survey',cat:'Fieldwork'},
+  {code:'FW11',desc:'Survey Data Processing/Interpretation',cat:'Fieldwork'},
+  {code:'FW11',desc:'Geophysical Survey Report Production',cat:'Fieldwork'},
+  {code:'FW11',desc:'Geophysical Survey Report Fig Production',cat:'Fieldwork'},
+  {code:'FW11',desc:'Geophysical Survey Report Editing',cat:'Fieldwork'},
+  {code:'FW11',desc:'Geophysical Survey Report Print & Bind',cat:'Fieldwork'},
+  {code:'FW12',desc:'Project Management',cat:'Fieldwork'},
+  {code:'FW12',desc:'DCC/NMS/Tii Meetings',cat:'Fieldwork'},
+  {code:'FW12',desc:'Client Meetings',cat:'Fieldwork'},
+  {code:'FW12',desc:'Design Team Meetings',cat:'Fieldwork'},
+  {code:'FW12',desc:'Project Workshops',cat:'Fieldwork'},
+  {code:'FW12',desc:'Public Consultations',cat:'Fieldwork'},
+  {code:'FW12',desc:'Revised/Updated Method Statement',cat:'Fieldwork'},
+  {code:'FW12',desc:'Further Impact Assessments',cat:'Fieldwork'},
+  // CONSULTANCY
+  {code:'DBA1',desc:'Baseline Analysis',cat:'Consultancy'},
+  {code:'DBA1',desc:'Baseline Research',cat:'Consultancy'},
+  {code:'DBA2',desc:'Walkover Survey',cat:'Consultancy'},
+  {code:'DBA3',desc:'Report Production',cat:'Consultancy'},
+  {code:'DBA3',desc:'Report Editing',cat:'Consultancy'},
+  {code:'DBA3',desc:'Printing & Binding',cat:'Consultancy'},
+  {code:'DBA4',desc:'Report Figure Production',cat:'Consultancy'},
+  {code:'DBA5',desc:'Client Meetings',cat:'Consultancy'},
+  {code:'DBA5',desc:'Design Team Meetings',cat:'Consultancy'},
+  {code:'DBA5',desc:'Project Workshops',cat:'Consultancy'},
+  {code:'DBA5',desc:'Public Consultations',cat:'Consultancy'},
+  {code:'DBA6',desc:'Prep Brief of Evidence',cat:'Consultancy'},
+  {code:'DBA6',desc:'Review of Responses',cat:'Consultancy'},
+  {code:'DBA6',desc:'Oral Hearing',cat:'Consultancy'},
+  {code:'DBA7',desc:'Project Management',cat:'Consultancy'},
+  {code:'DBA7',desc:'Correspondence',cat:'Consultancy'},
+  // POST-EX
+  {code:'PX1',desc:'Archive Processing',cat:'Post-Ex'},
+  {code:'PX1',desc:'Sorting Archive',cat:'Post-Ex'},
+  {code:'PX1',desc:'Archive Checking',cat:'Post-Ex'},
+  {code:'PX1',desc:'Archive Typing',cat:'Post-Ex'},
+  {code:'PX1',desc:'PXA Proposal',cat:'Post-Ex'},
+  {code:'PX2',desc:'Sorting/Quantifying Finds',cat:'Post-Ex'},
+  {code:'PX2',desc:'Washing Finds',cat:'Post-Ex'},
+  {code:'PX2',desc:'Stabilising Finds',cat:'Post-Ex'},
+  {code:'PX2',desc:'Bagging Finds',cat:'Post-Ex'},
+  {code:'PX2',desc:'Registering Finds (non specialist)',cat:'Post-Ex'},
+  {code:'PX2',desc:'Sorting/Quantifying Animal Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Washing Animal Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Bagging Animal Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Registering Animal Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Sorting/Quantifying Human Bone (non specialist)',cat:'Post-Ex'},
+  {code:'PX2',desc:'Washing Human Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Bagging Human Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Registering Human Bone',cat:'Post-Ex'},
+  {code:'PX2',desc:'Processing Samples',cat:'Post-Ex'},
+  {code:'PX2',desc:'Sorting Flots (non specialist)',cat:'Post-Ex'},
+  {code:'PX3',desc:'Prelim Report Template Production',cat:'Post-Ex'},
+  {code:'PX3',desc:'PXA/Prelim Report Production',cat:'Post-Ex'},
+  {code:'PX3',desc:'Prelim Report Plate Selection',cat:'Post-Ex'},
+  {code:'PX3',desc:'Prelim Report Review/Editing',cat:'Post-Ex'},
+  {code:'PX3',desc:'Prelim Report Print & Bind',cat:'Post-Ex'},
+  {code:'PX4',desc:'Process Survey (specify site)',cat:'Post-Ex'},
+  {code:'PX4',desc:'Scan Drawings',cat:'Post-Ex'},
+  {code:'PX4',desc:'Digitise Plans (specify site)',cat:'Post-Ex'},
+  {code:'PX4',desc:'Digitise Sections (specify site)',cat:'Post-Ex'},
+  {code:'PX4',desc:'Prelim Report Figure Production (specify site)',cat:'Post-Ex'},
+  {code:'PX4',desc:'Prelim Report Figure Edits (specify site)',cat:'Post-Ex'},
+  {code:'PX4',desc:'Process Drone Survey',cat:'Post-Ex'},
+  {code:'PX4',desc:'Process Photogrammetry',cat:'Post-Ex'},
+  {code:'PX5',desc:'Artefact Photography',cat:'Post-Ex'},
+  {code:'PX5',desc:'Artefact Illustration',cat:'Post-Ex'},
+  {code:'PX5',desc:'Artefact Analysis & Reporting',cat:'Post-Ex'},
+  {code:'PX5',desc:'Osteological Analysis & Reporting',cat:'Post-Ex'},
+  {code:'PX5',desc:'Specialist Analysis (specify specialism)',cat:'Post-Ex'},
+  {code:'PX6',desc:'Final Report Template Production',cat:'Post-Ex'},
+  {code:'PX6',desc:'Final Report Research',cat:'Post-Ex'},
+  {code:'PX6',desc:'Final Report Production (specify site)',cat:'Post-Ex'},
+  {code:'PX6',desc:'Final Report Plate Selection (specify site)',cat:'Post-Ex'},
+  {code:'PX6',desc:'Final Report Review/Editing (specify site)',cat:'Post-Ex'},
+  {code:'PX6',desc:'Final Report Print & Bind',cat:'Post-Ex'},
+  {code:'PX7',desc:'Digitise Plans (specify site)',cat:'Post-Ex'},
+  {code:'PX7',desc:'Digitise Sections (specify site)',cat:'Post-Ex'},
+  {code:'PX7',desc:'Final Report Figure Production (specify site)',cat:'Post-Ex'},
+  {code:'PX7',desc:'Final Report Figure Edits',cat:'Post-Ex'},
+  {code:'PX8',desc:'Boxing Artefacts for NMI Deposition',cat:'Post-Ex'},
+  {code:'PX8',desc:'Corres re: Transport Archive to NMI',cat:'Post-Ex'},
+  {code:'PX8',desc:'Boxing Paper Archive for NMS Deposition',cat:'Post-Ex'},
+  {code:'PX8',desc:'Corres re: Transport Archive to NMS',cat:'Post-Ex'},
+  {code:'PX9',desc:'Obtaining Specialist Quotes',cat:'Post-Ex'},
+  {code:'PX9',desc:'Prepare/Transfer Material to Specialists',cat:'Post-Ex'},
+  {code:'PX9',desc:'PX Meetings',cat:'Post-Ex'},
+  {code:'PX9',desc:'Programme Production',cat:'Post-Ex'},
+  {code:'PX9',desc:'Client PX Meetings',cat:'Post-Ex'},
+  {code:'PX9',desc:'PX Progress Meetings',cat:'Post-Ex'},
+  {code:'PX10',desc:'Writing and Editing Text and Figures',cat:'Post-Ex'},
+  {code:'PX10',desc:'Website Content Creation/Editing',cat:'Post-Ex'},
+  {code:'PX10',desc:'Social Media Content Creation/Editing',cat:'Post-Ex'},
+];
+
+function getJobCodes() {
+  return DB.jobCodes && DB.jobCodes.length > 0 ? DB.jobCodes : DEFAULT_JOB_CODES;
+}
+
+function jobCodeOptions(selectedVal) {
+  const codes = getJobCodes();
+  const cats = [...new Set(codes.map(c => c.cat))];
+  return `<option value="">— Select job code —</option>` +
+    cats.map(cat => `<optgroup label="${cat}">` +
+      codes.filter(c => c.cat === cat).map(c =>
+        `<option value="${c.code} - ${c.desc}" ${selectedVal===c.code+' - '+c.desc?'selected':''}>${c.code} — ${c.desc}</option>`
+      ).join('') +
+    `</optgroup>`).join('');
+}
+
+// ===== PERSONAL TIMESHEET (HR01A) =====
+// For all employees EXCEPT Site Assistants
+
+function isSiteAssistant(emp) {
+  if (!emp) return false;
+  const title = (emp.jobTitle||'').toLowerCase();
+  return title.includes('site assistant');
+}
+
+function openPersonalTimesheet(editId) {
+  const emp = window._empRecord;
+  if (!emp) { showToast('Employee record not linked to your account. Contact HR.', 'error'); return; }
+  if (isSiteAssistant(emp)) { showToast('Site Assistants use the team timesheet submitted by your manager.', 'error'); return; }
+
+  // Find existing if editing
+  const existing = editId ? (DB.personalTimesheets||[]).find(t => t.id === editId) : null;
+  window._editingPersonalTs = editId || null;
+
+  const today = new Date();
+  const mon = new Date(today);
+  mon.setDate(today.getDate() - today.getDay() + 1);
+  const defaultWeek = existing?.weekStart || mon.toISOString().split('T')[0];
+
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  const dayKeys = ['mon','tue','wed','thu','fri'];
+  const SUBSISTENCE_RATE = 39.17; // standard Irish Civil Service daily rate
+
+  const dayRows = days.map((day, di) => {
+    const dk = dayKeys[di];
+    const d = existing?.days?.[dk] || {};
+    return `
+      <tr style="border-bottom:1px solid var(--snow)">
+        <td style="padding:8px 10px;font-weight:600;font-size:0.82rem;color:var(--ink);white-space:nowrap;background:var(--snow)">${day}</td>
+        <td style="padding:6px 4px">
+          <select id="pts-${dk}-code" style="width:100%;padding:5px 4px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.72rem;color:var(--ink)" onchange="ptsCalcDay('${dk}')">
+            ${jobCodeOptions(d.jobCode||'')}
+          </select>
+        </td>
+        <td style="padding:6px 4px">
+          <input type="text" id="pts-${dk}-jobname" value="${d.jobName||''}" placeholder="Job name / site"
+            style="width:100%;padding:5px 6px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.78rem;color:var(--ink)">
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          <input type="time" id="pts-${dk}-start" value="${d.startTime||'08:00'}"
+            style="padding:5px 4px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.78rem;width:88px" onchange="ptsCalcDay('${dk}')">
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          <input type="time" id="pts-${dk}-finish" value="${d.finishTime||'16:30'}"
+            style="padding:5px 4px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.78rem;width:88px" onchange="ptsCalcDay('${dk}')">
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          <span id="pts-${dk}-hrs" style="font-weight:700;font-size:0.88rem;color:var(--ink)">—</span>
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          <input type="number" id="pts-${dk}-subsist" min="0" step="0.01" value="${d.subsistence||0}"
+            placeholder="0.00"
+            style="width:70px;padding:5px 4px;border:1.5px solid #e0d7ff;border-radius:6px;font-size:0.78rem;text-align:center;color:#7c3aed"
+            oninput="ptsTotals()">
+        </td>
+      </tr>`;
+  }).join('');
+
+  openModal('Personal Timesheet — HR01A', `
+    <div style="display:flex;flex-direction:column;height:calc(96vh - 60px)">
+
+      <!-- Header bar -->
+      <div style="background:var(--ink);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;flex-shrink:0">
+        <div style="font-size:0.82rem;color:rgba(255,255,255,0.7)">
+          <strong style="color:var(--white)">IAC Personal Weekly Timesheet — HR01A</strong>
+          &nbsp;·&nbsp;Issue No. 1 &nbsp;·&nbsp; 09 April 2025
+        </div>
+        <div style="margin-left:auto;display:flex;gap:16px">
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:var(--emerald)" id="pts-total-hrs">0.0h</div>
+            <div style="font-size:0.62rem;color:rgba(255,255,255,0.4);text-transform:uppercase">Total Hours</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:#a78bfa" id="pts-total-subsist">€0.00</div>
+            <div style="font-size:0.62rem;color:rgba(255,255,255,0.4);text-transform:uppercase">Subsistence</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Employee & week info -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;flex-shrink:0" class="light-form">
+        <div class="form-group" style="margin:0">
+          <label>Name</label>
+          <input type="text" id="pts-name" value="${emp.firstName} ${emp.lastName}" readonly
+            style="background:var(--snow);color:var(--mist)">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Week Starting (Monday)</label>
+          <input type="date" id="pts-week" value="${defaultWeek}" onchange="ptsAllDayCalc()">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Job Name / Project</label>
+          <input type="text" id="pts-project" value="${existing?.project||''}" placeholder="e.g. Dunboyne Phase 1">
+        </div>
+      </div>
+
+      <!-- Timesheet table -->
+      <div style="overflow:auto;flex:1;border:1.5px solid var(--cloud);border-radius:10px">
+        <table style="width:100%;border-collapse:collapse;min-width:700px">
+          <thead>
+            <tr style="background:var(--ink)">
+              <th style="padding:10px 10px;text-align:left;color:var(--fog);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:80px">Day</th>
+              <th style="padding:10px 6px;text-align:left;color:var(--fog);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:200px">Job No/Code</th>
+              <th style="padding:10px 6px;text-align:left;color:var(--fog);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:140px">Job Name</th>
+              <th style="padding:10px 6px;text-align:center;color:var(--fog);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:90px">Start</th>
+              <th style="padding:10px 6px;text-align:center;color:var(--fog);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:90px">Finish</th>
+              <th style="padding:10px 6px;text-align:center;color:var(--emerald);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:60px">Hours</th>
+              <th style="padding:10px 6px;text-align:center;color:#a78bfa;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:80px">Subsistence (€)</th>
+            </tr>
+          </thead>
+          <tbody>${dayRows}</tbody>
+          <tfoot>
+            <tr style="background:rgba(0,184,122,0.06);border-top:2px solid var(--emerald)">
+              <td colspan="5" style="padding:10px 10px;font-weight:700;font-size:0.85rem;color:var(--ink)">TOTALS</td>
+              <td style="padding:10px 6px;text-align:center;font-weight:800;font-size:1rem;color:var(--emerald)" id="pts-foot-hrs">—</td>
+              <td style="padding:10px 6px;text-align:center;font-weight:800;font-size:1rem;color:#7c3aed" id="pts-foot-subsist">€0.00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Signature row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;flex-shrink:0" class="light-form">
+        <div class="form-group" style="margin:0">
+          <label>Name (Print)</label>
+          <input type="text" id="pts-print-name" value="${emp.firstName} ${emp.lastName}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Date</label>
+          <input type="date" id="pts-sign-date" value="${new Date().toISOString().split('T')[0]}">
+        </div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--mist);margin-top:6px;flex-shrink:0">
+        HR01A · Issue No. 1 · Issue Date: 09 April 2025 &nbsp;|&nbsp; Subsistence Total per week shown above
+      </div>
+
+      <div class="modal-footer" style="flex-shrink:0;padding-top:10px">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-secondary" style="border-color:var(--amber);color:var(--amber)" onclick="savePersonalTimesheet('draft')">Save Draft</button>
+        <button class="btn-primary" onclick="savePersonalTimesheet('submitted')">✓ Submit</button>
+      </div>
+    </div>
+  `, 'xl');
+
+  setTimeout(() => ptsAllDayCalc(), 30);
+}
+
+function ptsCalcDay(dk) {
+  const start = document.getElementById(`pts-${dk}-start`)?.value;
+  const finish = document.getElementById(`pts-${dk}-finish`)?.value;
+  const hrsEl = document.getElementById(`pts-${dk}-hrs`);
+  if (!start || !finish || !hrsEl) return;
+  const [sh,sm] = start.split(':').map(Number);
+  const [fh,fm] = finish.split(':').map(Number);
+  const hrs = ((fh*60+fm) - (sh*60+sm)) / 60;
+  hrsEl.textContent = hrs > 0 ? hrs.toFixed(1)+'h' : '—';
+  ptsTotals();
+}
+
+function ptsAllDayCalc() {
+  ['mon','tue','wed','thu','fri'].forEach(dk => ptsCalcDay(dk));
+}
+
+function ptsTotals() {
+  let totalHrs = 0, totalSub = 0;
+  ['mon','tue','wed','thu','fri'].forEach(dk => {
+    const start = document.getElementById(`pts-${dk}-start`)?.value;
+    const finish = document.getElementById(`pts-${dk}-finish`)?.value;
+    if (start && finish) {
+      const [sh,sm] = start.split(':').map(Number);
+      const [fh,fm] = finish.split(':').map(Number);
+      const hrs = ((fh*60+fm)-(sh*60+sm))/60;
+      if (hrs > 0) totalHrs += hrs;
+    }
+    totalSub += parseFloat(document.getElementById(`pts-${dk}-subsist`)?.value || 0);
+  });
+  ['pts-total-hrs','pts-foot-hrs'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = totalHrs.toFixed(1)+'h';
+  });
+  ['pts-total-subsist','pts-foot-subsist'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '€'+totalSub.toFixed(2);
+  });
+}
+
+function savePersonalTimesheet(status) {
+  const emp = window._empRecord;
+  if (!emp) return;
+  const weekStart = document.getElementById('pts-week')?.value;
+  const project = document.getElementById('pts-project')?.value.trim();
+  if (!weekStart) { showToast('Please select a week', 'error'); return; }
+
+  const dayKeys = ['mon','tue','wed','thu','fri'];
+  const days = {};
+  let totalHrs = 0, totalSub = 0;
+  dayKeys.forEach(dk => {
+    const start = document.getElementById(`pts-${dk}-start`)?.value || '';
+    const finish = document.getElementById(`pts-${dk}-finish`)?.value || '';
+    const jobCode = document.getElementById(`pts-${dk}-code`)?.value || '';
+    const jobName = document.getElementById(`pts-${dk}-jobname`)?.value.trim() || '';
+    const subsistence = parseFloat(document.getElementById(`pts-${dk}-subsist`)?.value || 0);
+    let hrs = 0;
+    if (start && finish) {
+      const [sh,sm] = start.split(':').map(Number);
+      const [fh,fm] = finish.split(':').map(Number);
+      hrs = Math.max(0, ((fh*60+fm)-(sh*60+sm))/60);
+    }
+    totalHrs += hrs;
+    totalSub += subsistence;
+    days[dk] = { startTime: start, finishTime: finish, hours: parseFloat(hrs.toFixed(2)), jobCode, jobName, subsistence };
+  });
+
+  if (!DB.personalTimesheets) DB.personalTimesheets = [];
+  const ts = {
+    id: window._editingPersonalTs || genId('pts'),
+    employeeId: emp.id,
+    employeeName: emp.firstName + ' ' + emp.lastName,
+    worksNumber: emp.worksNumber,
+    weekStart, project, days,
+    totalHours: parseFloat(totalHrs.toFixed(2)),
+    totalSubsistence: parseFloat(totalSub.toFixed(2)),
+    status,
+    submittedAt: new Date().toISOString(),
+    submittedBy: currentUser?.id,
+    printName: document.getElementById('pts-print-name')?.value || emp.firstName+' '+emp.lastName,
+    signDate: document.getElementById('pts-sign-date')?.value || '',
+  };
+
+  if (window._editingPersonalTs) {
+    const idx = DB.personalTimesheets.findIndex(t => t.id === window._editingPersonalTs);
+    if (idx >= 0) DB.personalTimesheets[idx] = ts; else DB.personalTimesheets.push(ts);
+  } else {
+    DB.personalTimesheets.push(ts);
+  }
+  saveDoc('personalTimesheets', ts.id, ts);
+  writeAuditLog(currentUser?.name, currentUser?.id, 'TIMESHEET_SUBMIT', `Personal timesheet ${status}: week ${weekStart}`);
+  closeModal();
+  showToast(status === 'submitted' ? '✓ Timesheet submitted!' : '✓ Draft saved', 'success');
+  renderEmpTimesheets();
+}
+
+// ── Employee: Timesheets panel ────────────────────────────────
+function renderEmpTimesheets() {
+  const panel = document.getElementById('emp-timesheets');
+  if (!panel) return;
+  const emp = window._empRecord;
+
+  if (emp && isSiteAssistant(emp)) {
+    panel.innerHTML = `<div class="mgr-section">
+      <div class="mgr-card" style="text-align:center;padding:32px">
+        <div style="font-size:2rem;margin-bottom:10px">📋</div>
+        <div style="font-weight:700;color:var(--ink);margin-bottom:6px">Your timesheets are managed by your Site Director</div>
+        <div style="font-size:0.82rem;color:var(--mist)">Your hours are submitted on your behalf each week. Contact your manager if you have questions.</div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const mySheets = (DB.personalTimesheets||[])
+    .filter(t => t.employeeId === emp?.id)
+    .sort((a,b) => b.weekStart?.localeCompare(a.weekStart));
+
+  panel.innerHTML = `
+    <div class="mgr-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--ink)">My Timesheets</h3>
+          <p style="font-size:0.78rem;color:var(--mist)">${mySheets.length} timesheet${mySheets.length!==1?'s':''} on record</p>
+        </div>
+        <button class="approve-btn" style="width:auto;padding:10px 18px;font-size:0.85rem" onclick="openPersonalTimesheet()">+ New Timesheet</button>
+      </div>
+      ${mySheets.length === 0 ? `
+        <div class="mgr-card" style="text-align:center;padding:32px">
+          <div style="font-size:2.5rem;margin-bottom:10px">📋</div>
+          <div style="font-weight:700;color:var(--ink);margin-bottom:6px">No timesheets yet</div>
+          <div style="font-size:0.82rem;color:var(--mist);margin-bottom:16px">Submit your weekly timesheet here</div>
+          <button class="approve-btn" style="width:auto;padding:10px 20px" onclick="openPersonalTimesheet()">+ Create Timesheet</button>
+        </div>` :
+        mySheets.map(ts => {
+          const weekEnd = new Date(ts.weekStart); weekEnd.setDate(weekEnd.getDate()+4);
+          const fmt = d => new Date(d).toLocaleDateString('en-IE',{day:'2-digit',month:'short'});
+          return `<div class="mgr-card" style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <div style="font-weight:700;font-size:0.92rem;color:var(--ink)">${fmt(ts.weekStart)} – ${fmt(weekEnd)}</div>
+                <div style="font-size:0.76rem;color:var(--mist);margin-top:2px">${ts.project||'—'} · ${ts.totalHours}h · Subsistence: €${(ts.totalSubsistence||0).toFixed(2)}</div>
+              </div>
+              <span style="font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:20px;background:${ts.status==='submitted'?'rgba(0,184,122,0.12)':'rgba(245,158,11,0.12)'};color:${ts.status==='submitted'?'var(--emerald)':'var(--amber)'}">
+                ${ts.status}
+              </span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              ${ts.status==='draft'?`<button class="approve-btn" style="flex:none;padding:7px 14px;font-size:0.78rem;width:auto" onclick="openPersonalTimesheet('${ts.id}')">Edit & Submit</button>`:''}
+              <button class="decline-btn" style="flex:none;padding:7px 14px;font-size:0.78rem" onclick="viewPersonalTimesheet('${ts.id}')">View</button>
+            </div>
+          </div>`;
+        }).join('')}
+    </div>`;
+}
+
+function viewPersonalTimesheet(tsId) {
+  const ts = (DB.personalTimesheets||[]).find(t => t.id === tsId);
+  if (!ts) return;
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  const dayKeys = ['mon','tue','wed','thu','fri'];
+  const weekEnd = new Date(ts.weekStart); weekEnd.setDate(weekEnd.getDate()+4);
+  const fmt = d => new Date(d).toLocaleDateString('en-IE',{day:'2-digit',month:'short',year:'numeric'});
+
+  openModal(`Timesheet — ${ts.employeeName} — ${fmt(ts.weekStart)}`, `
+    <div style="min-width:500px">
+      <div style="background:var(--ink);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:0.82rem;color:rgba(255,255,255,0.7)">
+        <strong style="color:var(--white)">${ts.employeeName}</strong> &nbsp;·&nbsp; ${fmt(ts.weekStart)} – ${fmt(weekEnd)}
+        &nbsp;·&nbsp; ${ts.project||'—'} &nbsp;·&nbsp;
+        <span style="color:${ts.status==='submitted'?'var(--emerald)':'var(--amber)'}">${ts.status}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+        <thead><tr style="background:var(--ink)">
+          ${['Day','Job Code','Job Name','Start','Finish','Hours','Subsistence'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--fog);font-size:0.7rem;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${dayKeys.map((dk,i) => {
+            const d = ts.days?.[dk]||{};
+            return `<tr style="border-bottom:1px solid var(--snow);background:${i%2===0?'var(--white)':'var(--snow)'}">
+              <td style="padding:7px 10px;font-weight:600">${days[i]}</td>
+              <td style="padding:7px 10px;font-size:0.76rem">${d.jobCode||'—'}</td>
+              <td style="padding:7px 10px">${d.jobName||'—'}</td>
+              <td style="padding:7px 10px">${d.startTime||'—'}</td>
+              <td style="padding:7px 10px">${d.finishTime||'—'}</td>
+              <td style="padding:7px 10px;font-weight:700;color:var(--emerald)">${d.hours||0}h</td>
+              <td style="padding:7px 10px;color:#7c3aed;font-weight:600">€${(d.subsistence||0).toFixed(2)}</td>
+            </tr>`;
+          }).join('')}
+          <tr style="background:rgba(0,184,122,0.06);border-top:2px solid var(--emerald);font-weight:800">
+            <td colspan="5" style="padding:9px 10px">TOTAL</td>
+            <td style="padding:9px 10px;color:var(--emerald)">${ts.totalHours}h</td>
+            <td style="padding:9px 10px;color:#7c3aed">€${(ts.totalSubsistence||0).toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:12px;font-size:0.78rem;color:var(--mist);padding:8px 0;border-top:1px solid var(--cloud)">
+        Submitted by: ${ts.printName||ts.employeeName} &nbsp;·&nbsp; Date: ${ts.signDate||'—'} &nbsp;·&nbsp; HR01A Issue No.1
+      </div>
+      <div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>
+    </div>
+  `, true);
+}
 </script>
 
 
-<div id="loading-screen" style="position: fixed; inset: 0px; background: rgb(15, 25, 35); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; gap: 16px;"><div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#00b87a,#00d4a0);display:flex;align-items:center;justify-content:center;font-family:Syne,sans-serif;font-weight:800;font-size:1.1rem;color:white">TC</div><div id="loading-msg" style="color:#8a9bb0;font-size:0.9rem">Connecting to database...</div><div style="width:160px;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden"><div style="height:100%;background:#00b87a;border-radius:2px;animation:ldBar 1.2s ease-in-out infinite;width:60%"></div></div></div></body></html>
+<div id="loading-screen" style="position: fixed; inset: 0px; background: rgb(15, 25, 35); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; gap: 16px;"><div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#00b87a,#00d4a0);display:flex;align-items:center;justify-content:center;font-family:Syne,sans-serif;font-weight:800;font-size:1.1rem;color:white">TC</div><div id="loading-msg" style="color:#8a9bb0;font-size:0.9rem">Connecting to database...</div><div style="width:160px;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden"><div style="height:100%;background:#00b87a;border-radius:2px;animation:ldBar 1.2s ease-in-out infinite;width:60%"></div></div></div></body></html><script>
+// ===== SITE TIMESHEET HR01B — Manager fills on behalf of team =====
+
+function openSiteTimesheet(editId) {
+  const existing = editId ? (DB.timesheets||[]).find(t => t.id === editId) : null;
+  window._editingSiteTs = editId || null;
+  const team = window._mgrTeam || getMgrTeam();
+  const siteAssistants = team.filter(e => isSiteAssistant(e));
+
+  const today = new Date();
+  const fri = new Date(today);
+  fri.setDate(today.getDate() + (5 - today.getDay()));
+  const defaultWeekEnd = existing?.weekEnd || fri.toISOString().split('T')[0];
+
+  // Staff grade rows - pre-populate from team
+  const grades = ['Director','Project Manager','Surveyor','Supervisor','Archaeologist Grade 1','Archaeologist Grade 2'];
+  const staffRows = (existing?.staffRows || grades.map(g => ({grade: g, name:'', mon:0, tue:0, wed:0, thu:0, fri:0, hoursWorkedPct:100}))).map((row, i) => {
+    const rid = `sr-${i}`;
+    return `<tr style="border-bottom:1px solid var(--snow)">
+      <td style="padding:6px 8px;font-size:0.78rem;font-weight:600;color:var(--slate);white-space:nowrap;background:var(--snow);min-width:140px">${row.grade}</td>
+      <td style="padding:4px 4px;min-width:160px">
+        <select id="${rid}-emp" style="width:100%;padding:4px 6px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.74rem" onchange="stsAutoFill('${rid}')">
+          <option value="">— Select employee —</option>
+          ${siteAssistants.map(e=>`<option value="${e.id}" ${row.empId===e.id?'selected':''}>${e.firstName} ${e.lastName}</option>`).join('')}
+          <option value="__other__" ${row.empId==='__other__'?'selected':''}>Other (type name)</option>
+        </select>
+        <input type="text" id="${rid}-name" value="${row.name||''}" placeholder="Or type name..." style="width:100%;padding:4px 6px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.74rem;margin-top:3px;display:${row.empId==='__other__'||!row.empId?'block':'none'}">
+      </td>
+      ${['mon','tue','wed','thu','fri'].map(d=>`
+        <td style="padding:4px 3px;text-align:center">
+          <input type="number" id="${rid}-${d}" min="0" max="24" step="0.5" value="${row[d]||0}"
+            style="width:46px;padding:4px 2px;border:1.5px solid var(--cloud);border-radius:6px;font-size:0.8rem;text-align:center"
+            oninput="stsRowTotal('${rid}')">
+        </td>`).join('')}
+      <td style="padding:4px 6px;text-align:center;font-weight:700;font-size:0.88rem;color:var(--emerald)" id="${rid}-total">0h</td>
+      <td style="padding:4px 4px;text-align:center">
+        <input type="number" id="${rid}-pct" min="0" max="100" value="${row.hoursWorkedPct||100}"
+          style="width:50px;padding:4px 2px;border:1.5px solid #e0d7ff;border-radius:6px;font-size:0.78rem;text-align:center;color:#7c3aed">
+        <div style="font-size:0.6rem;color:var(--mist)">%</div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  openModal('Site Weekly Timesheet — HR01B', `
+    <div style="display:flex;flex-direction:column;height:calc(96vh - 60px)">
+
+      <!-- Header -->
+      <div style="background:var(--ink);border-radius:10px;padding:12px 16px;margin-bottom:14px;flex-shrink:0">
+        <div style="font-size:0.78rem;color:rgba(255,255,255,0.6)">
+          <strong style="color:var(--white);font-size:0.9rem">IAC Site Weekly Timesheet — HR01B</strong>
+          &nbsp;·&nbsp; Issue No. 0 &nbsp;·&nbsp; 08 January 2024
+        </div>
+      </div>
+
+      <!-- Job details -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;flex-shrink:0" class="light-form">
+        <div class="form-group" style="margin:0">
+          <label>Job Name *</label>
+          <input type="text" id="sts-jobname" value="${existing?.jobName||''}" placeholder="e.g. Dunboyne Phase 1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Job Number</label>
+          <input type="text" id="sts-jobno" value="${existing?.jobNumber||''}" placeholder="e.g. J4481">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Area</label>
+          <input type="text" id="sts-area" value="${existing?.area||''}" placeholder="e.g. Trench 1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Week Ending (Friday)</label>
+          <input type="date" id="sts-weekend" value="${defaultWeekEnd}">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px;flex-shrink:0" class="light-form">
+        <div class="form-group" style="margin:0">
+          <label>Fieldwork Activity Code</label>
+          <select id="sts-code" style="width:100%;padding:8px 10px;border:1.5px solid var(--cloud);border-radius:8px;font-size:0.85rem">
+            ${jobCodeOptions(existing?.activityCode||'')}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Site Director</label>
+          <input type="text" id="sts-director" value="${existing?.siteDirector||currentUser?.name||''}" placeholder="Site Director name">
+        </div>
+      </div>
+
+      <!-- Staff table -->
+      <div style="overflow:auto;flex:1;border:1.5px solid var(--cloud);border-radius:10px">
+        <table style="width:100%;border-collapse:collapse;min-width:680px">
+          <thead>
+            <tr style="background:var(--ink)">
+              <th style="padding:9px 8px;text-align:left;color:var(--fog);font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Grade/Role</th>
+              <th style="padding:9px 6px;text-align:left;color:var(--fog);font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Staff Member</th>
+              ${['Mon','Tue','Wed','Thu','Fri'].map(d=>`<th style="padding:9px 4px;text-align:center;color:var(--fog);font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:50px">${d}</th>`).join('')}
+              <th style="padding:9px 6px;text-align:center;color:var(--emerald);font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:50px">Total</th>
+              <th style="padding:9px 4px;text-align:center;color:#a78bfa;font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;min-width:56px">Hrs Worked %</th>
+            </tr>
+          </thead>
+          <tbody id="sts-staff-body">${staffRows}</tbody>
+        </table>
+      </div>
+
+      <!-- Notes -->
+      <div class="light-form" style="margin-top:12px;flex-shrink:0">
+        <div class="form-group" style="margin:0">
+          <label>Further Notes/Comments <span style="font-weight:400;color:var(--mist)">(include if staff are sick/absent/annual leave or on another site/monitoring)</span></label>
+          <textarea id="sts-notes" rows="2" placeholder="e.g. J. Murphy absent — annual leave Mon/Tue" style="width:100%;padding:8px 10px;border:1.5px solid var(--cloud);border-radius:8px;font-size:0.84rem;resize:vertical;font-family:inherit">${existing?.notes||''}</textarea>
+        </div>
+      </div>
+
+      <!-- Signature row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:10px;flex-shrink:0" class="light-form">
+        <div class="form-group" style="margin:0">
+          <label>Print Name</label>
+          <input type="text" id="sts-print" value="${existing?.printName||currentUser?.name||''}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Site Director (confirm)</label>
+          <input type="text" id="sts-director2" value="${existing?.siteDirector||currentUser?.name||''}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Date</label>
+          <input type="date" id="sts-date" value="${new Date().toISOString().split('T')[0]}">
+        </div>
+      </div>
+      <div style="font-size:0.7rem;color:var(--mist);margin-top:4px;flex-shrink:0">HR01B · Issue No. 0 · Issue Date: 08 January 2024</div>
+
+      <div class="modal-footer" style="flex-shrink:0;padding-top:10px">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-secondary" style="border-color:var(--amber);color:var(--amber)" onclick="saveSiteTimesheet('draft')">Save Draft</button>
+        <button class="btn-primary" onclick="saveSiteTimesheet('submitted')">✓ Submit</button>
+      </div>
+    </div>
+  `, 'xl');
+
+  setTimeout(() => {
+    document.querySelectorAll('[id^="sr-"][id$="-mon"]').forEach(el => {
+      const rid = el.id.replace('-mon','');
+      stsRowTotal(rid);
+    });
+  }, 50);
+}
+
+function stsAutoFill(rid) {
+  const sel = document.getElementById(`${rid}-emp`);
+  const nameInp = document.getElementById(`${rid}-name`);
+  if (!sel || !nameInp) return;
+  if (sel.value === '__other__' || !sel.value) {
+    nameInp.style.display = 'block';
+  } else {
+    nameInp.style.display = 'none';
+    const emp = DB.employees.find(e => e.id === sel.value);
+    if (emp) nameInp.value = emp.firstName + ' ' + emp.lastName;
+  }
+}
+
+function stsRowTotal(rid) {
+  let total = 0;
+  ['mon','tue','wed','thu','fri'].forEach(d => {
+    total += parseFloat(document.getElementById(`${rid}-${d}`)?.value || 0);
+  });
+  const el = document.getElementById(`${rid}-total`);
+  if (el) el.textContent = total.toFixed(1) + 'h';
+}
+
+function saveSiteTimesheet(status) {
+  const jobName = document.getElementById('sts-jobname')?.value.trim();
+  if (!jobName) { showToast('Please enter a job name', 'error'); return; }
+
+  const staffRows = [];
+  let totalHours = 0;
+  const grades = ['Director','Project Manager','Surveyor','Supervisor','Archaeologist Grade 1','Archaeologist Grade 2'];
+
+  grades.forEach((grade, i) => {
+    const rid = `sr-${i}`;
+    const empId = document.getElementById(`${rid}-emp`)?.value || '';
+    const emp = DB.employees.find(e => e.id === empId);
+    const name = emp ? `${emp.firstName} ${emp.lastName}` : (document.getElementById(`${rid}-name`)?.value.trim() || '');
+    const mon = parseFloat(document.getElementById(`${rid}-mon`)?.value || 0);
+    const tue = parseFloat(document.getElementById(`${rid}-tue`)?.value || 0);
+    const wed = parseFloat(document.getElementById(`${rid}-wed`)?.value || 0);
+    const thu = parseFloat(document.getElementById(`${rid}-thu`)?.value || 0);
+    const fri = parseFloat(document.getElementById(`${rid}-fri`)?.value || 0);
+    const rowTotal = mon+tue+wed+thu+fri;
+    totalHours += rowTotal;
+    if (name || rowTotal > 0) {
+      staffRows.push({ grade, empId, name, mon, tue, wed, thu, fri, total: rowTotal, hoursWorkedPct: parseFloat(document.getElementById(`${rid}-pct`)?.value || 100) });
+    }
+  });
+
+  const ts = {
+    id: window._editingSiteTs || genId('ts'),
+    type: 'site',
+    jobName,
+    jobNumber: document.getElementById('sts-jobno')?.value.trim() || '',
+    area: document.getElementById('sts-area')?.value.trim() || '',
+    weekEnd: document.getElementById('sts-weekend')?.value || '',
+    activityCode: document.getElementById('sts-code')?.value || '',
+    siteDirector: document.getElementById('sts-director')?.value.trim() || '',
+    notes: document.getElementById('sts-notes')?.value.trim() || '',
+    printName: document.getElementById('sts-print')?.value.trim() || '',
+    signDate: document.getElementById('sts-date')?.value || '',
+    staffRows,
+    totalHours: parseFloat(totalHours.toFixed(2)),
+    status,
+    submittedBy: currentUser?.id,
+    submittedByName: currentUser?.name,
+    submittedAt: new Date().toISOString(),
+  };
+
+  if (!DB.timesheets) DB.timesheets = [];
+  if (window._editingSiteTs) {
+    const idx = DB.timesheets.findIndex(t => t.id === window._editingSiteTs);
+    if (idx >= 0) DB.timesheets[idx] = ts; else DB.timesheets.push(ts);
+  } else {
+    DB.timesheets.push(ts);
+  }
+  saveDoc('timesheets', ts.id, ts);
+  writeAuditLog(currentUser?.name, currentUser?.id, 'TIMESHEET_SUBMIT', `Site timesheet ${status}: ${jobName} week ending ${ts.weekEnd}`);
+  closeModal();
+  showToast(status === 'submitted' ? '✓ Site timesheet submitted!' : '✓ Draft saved', 'success');
+  renderMgrTimesheets();
+}
+
+// ── Update renderMgrTimesheets to show both types + open correct modal ──
+const _origRenderMgrTimesheets = typeof renderMgrTimesheets === 'function' ? renderMgrTimesheets : null;
+renderMgrTimesheets = function() {
+  const panel = document.getElementById('mgr-timesheets');
+  if (!panel) return;
+  const mySheets = (DB.timesheets||[]).filter(s => s.submittedBy === currentUser?.id);
+  const fmt = d => d ? new Date(d).toLocaleDateString('en-IE',{day:'2-digit',month:'short'}) : '';
+  const statusColor = s => s==='submitted'?'var(--emerald)':'var(--amber)';
+
+  panel.innerHTML = `
+    <div class="mgr-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--ink)">Site Timesheets</h3>
+          <p style="font-size:0.78rem;color:var(--mist)">${mySheets.length} timesheet${mySheets.length!==1?'s':''} submitted</p>
+        </div>
+        <button class="approve-btn" style="width:auto;padding:10px 18px;font-size:0.85rem" onclick="openSiteTimesheet()">+ New Site Timesheet</button>
+      </div>
+
+      ${mySheets.length === 0 ? `
+        <div class="mgr-card" style="text-align:center;padding:32px">
+          <div style="font-size:2.5rem;margin-bottom:10px">📋</div>
+          <div style="font-family:var(--font-display);font-weight:700;color:var(--ink);margin-bottom:6px">No timesheets yet</div>
+          <div style="font-size:0.82rem;color:var(--mist);margin-bottom:16px">Create a weekly site timesheet for your crew</div>
+          <button class="approve-btn" style="width:auto;padding:10px 20px" onclick="openSiteTimesheet()">+ New Site Timesheet</button>
+        </div>` :
+        [...mySheets].sort((a,b)=>(b.weekEnd||'').localeCompare(a.weekEnd||'')).map(sheet => {
+          return `<div class="mgr-card" style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+              <div>
+                <div style="font-family:var(--font-display);font-weight:700;font-size:0.95rem;color:var(--ink)">${sheet.jobName||'Site Timesheet'}</div>
+                <div style="font-size:0.76rem;color:var(--mist);margin-top:2px">
+                  ${sheet.jobNumber?sheet.jobNumber+' · ':''}Week ending ${fmt(sheet.weekEnd)} · ${(sheet.staffRows||[]).filter(r=>r.name).length} staff · ${sheet.totalHours||0}h total
+                </div>
+                ${sheet.activityCode?`<div style="font-size:0.72rem;color:var(--slate);margin-top:2px">Code: ${sheet.activityCode}</div>`:''}
+              </div>
+              <span style="font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;background:${sheet.status==='submitted'?'rgba(0,184,122,0.12)':'rgba(245,158,11,0.12)'};color:${statusColor(sheet.status)};text-transform:uppercase">${sheet.status}</span>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="decline-btn" style="flex:none;padding:8px 14px;font-size:0.78px" onclick="viewSiteTimesheet('${sheet.id}')">View</button>
+              ${sheet.status==='draft'?`<button class="approve-btn" style="flex:none;padding:8px 14px;font-size:0.78rem;width:auto" onclick="openSiteTimesheet('${sheet.id}')">Edit & Submit</button>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+    </div>`;
+};
+
+function viewSiteTimesheet(tsId) {
+  const ts = (DB.timesheets||[]).find(t => t.id === tsId);
+  if (!ts) return;
+  const fmt = d => d ? new Date(d).toLocaleDateString('en-IE',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  const days = ['Mon','Tue','Wed','Thu','Fri'];
+
+  openModal(`Site Timesheet — ${ts.jobName} — Week ending ${fmt(ts.weekEnd)}`, `
+    <div style="min-width:560px">
+      <div style="background:var(--ink);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:0.82rem;color:rgba(255,255,255,0.7)">
+        <strong style="color:var(--white)">${ts.jobName}</strong> ${ts.jobNumber?'· '+ts.jobNumber:''} ${ts.area?'· Area: '+ts.area:''}
+        &nbsp;·&nbsp; Week ending: ${fmt(ts.weekEnd)}
+        &nbsp;·&nbsp; <span style="color:${ts.status==='submitted'?'var(--emerald)':'var(--amber)'}">${ts.status}</span>
+      </div>
+      ${ts.activityCode?`<div style="margin-bottom:10px;font-size:0.8rem;color:var(--slate)"><strong>Activity Code:</strong> ${ts.activityCode}</div>`:''}
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+        <thead><tr style="background:var(--ink)">
+          ${['Grade/Role','Name','Mon','Tue','Wed','Thu','Fri','Total','Hrs %'].map(h=>`<th style="padding:7px 8px;text-align:left;color:var(--fog);font-size:0.67rem;font-weight:700;text-transform:uppercase">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${(ts.staffRows||[]).map((r,i)=>`
+            <tr style="border-bottom:1px solid var(--snow);background:${i%2===0?'var(--white)':'var(--snow)'}">
+              <td style="padding:7px 8px;font-weight:600;font-size:0.76rem">${r.grade}</td>
+              <td style="padding:7px 8px">${r.name||'—'}</td>
+              ${['mon','tue','wed','thu','fri'].map(d=>`<td style="padding:7px 8px;text-align:center">${r[d]||0}h</td>`).join('')}
+              <td style="padding:7px 8px;text-align:center;font-weight:700;color:var(--emerald)">${r.total||0}h</td>
+              <td style="padding:7px 8px;text-align:center;color:#7c3aed">${r.hoursWorkedPct||100}%</td>
+            </tr>`).join('')}
+          <tr style="background:rgba(0,184,122,0.06);border-top:2px solid var(--emerald);font-weight:800">
+            <td colspan="7" style="padding:8px 8px">TOTAL HOURS</td>
+            <td colspan="2" style="padding:8px 8px;color:var(--emerald)">${ts.totalHours}h</td>
+          </tr>
+        </tbody>
+      </table>
+      ${ts.notes?`<div style="margin-top:10px;background:var(--snow);border-radius:8px;padding:10px 12px;font-size:0.8rem"><strong>Notes:</strong> ${ts.notes}</div>`:''}
+      <div style="margin-top:10px;font-size:0.76rem;color:var(--mist);border-top:1px solid var(--cloud);padding-top:8px">
+        Signed: ${ts.printName||'—'} &nbsp;·&nbsp; Site Director: ${ts.siteDirector||'—'} &nbsp;·&nbsp; Date: ${ts.signDate||'—'} &nbsp;·&nbsp; HR01B Issue No.0
+      </div>
+      <div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>
+    </div>
+  `, true);
+}
+
+// Add AD/BD codes to DEFAULT_JOB_CODES
+DEFAULT_JOB_CODES.push(
+  {code:'AD1',desc:'Office Admin',cat:'Admin & Business Dev'},
+  {code:'AD2',desc:'Staff Reviews',cat:'Admin & Business Dev'},
+  {code:'AD3',desc:'CPD Admin',cat:'Admin & Business Dev'},
+  {code:'BD1',desc:'Tenders and Proposals',cat:'Admin & Business Dev'},
+  {code:'BD2',desc:'Marketing (social media, client meetings, memberships)',cat:'Admin & Business Dev'}
+);
+</script>
