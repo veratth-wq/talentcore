@@ -11202,17 +11202,23 @@ renderMgrTimesheets = function() {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h3 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--ink)">Site Timesheets</h3>
-          <p style="font-size:0.78rem;color:var(--mist)">${mySheets.length} timesheet${mySheets.length!==1?'s':''} submitted</p>
+          <p style="font-size:0.78rem;color:var(--mist)">${mySheets.length} site timesheet${mySheets.length!==1?'s':''} submitted</p>
         </div>
-        <button class="approve-btn" style="width:auto;padding:10px 18px;font-size:0.85rem" onclick="openSiteTimesheet()">+ New Site Timesheet</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" style="width:auto;padding:10px 16px;font-size:0.82rem;border-color:var(--emerald);color:var(--emerald)" onclick="openPersonalTimesheet()">+ My Personal Timesheet</button>
+          <button class="approve-btn" style="width:auto;padding:10px 16px;font-size:0.82rem" onclick="openSiteTimesheet()">+ New Site Timesheet</button>
+        </div>
       </div>
 
       ${mySheets.length === 0 ? `
         <div class="mgr-card" style="text-align:center;padding:32px">
           <div style="font-size:2.5rem;margin-bottom:10px">📋</div>
-          <div style="font-family:var(--font-display);font-weight:700;color:var(--ink);margin-bottom:6px">No timesheets yet</div>
-          <div style="font-size:0.82rem;color:var(--mist);margin-bottom:16px">Create a weekly site timesheet for your crew</div>
-          <button class="approve-btn" style="width:auto;padding:10px 20px" onclick="openSiteTimesheet()">+ New Site Timesheet</button>
+          <div style="font-family:var(--font-display);font-weight:700;color:var(--ink);margin-bottom:6px">No site timesheets yet</div>
+          <div style="font-size:0.82rem;color:var(--mist);margin-bottom:16px">Create a weekly site timesheet for your crew, or submit your own personal timesheet</div>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <button class="btn-secondary" style="width:auto;padding:10px 18px;border-color:var(--emerald);color:var(--emerald)" onclick="openPersonalTimesheet()">+ My Personal Timesheet</button>
+            <button class="approve-btn" style="width:auto;padding:10px 18px" onclick="openSiteTimesheet()">+ New Site Timesheet</button>
+          </div>
         </div>` :
         [...mySheets].sort((a,b)=>(b.weekEnd||'').localeCompare(a.weekEnd||'')).map(sheet => {
           return `<div class="mgr-card" style="margin-bottom:12px">
