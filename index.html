@@ -3438,10 +3438,11 @@ function openAddCompanyDoc(docId) {
     <div class="form-row">
       <div class="form-group"><label>Category</label>
         <select id="cd-cat">
-          <option value="policy" ${doc&&doc.category==='policy'?'selected':''}>HR Policy</option>
-          <option value="contract" ${doc&&doc.category==='contract'?'selected':''}>Contract Template</option>
-          <option value="hs" ${doc&&doc.category==='hs'?'selected':''}>Health & Safety</option>
-          <option value="other" ${doc&&doc.category==='other'?'selected':''}>Other</option>
+          <option value="HR" ${doc&&doc.category==='HR'?'selected':''}>HR</option>
+          <option value="Payroll" ${doc&&doc.category==='Payroll'?'selected':''}>Payroll</option>
+          <option value="H&S" ${doc&&doc.category==='H&S'?'selected':''}>H&S</option>
+          <option value="Field Resources" ${doc&&doc.category==='Field Resources'?'selected':''}>Field Resources</option>
+          <option value="Other Company Resources" ${(!doc||!doc.category||doc.category==='Other Company Resources'||doc.category==='other'||doc.category==='policy'||doc.category==='contract')?'selected':''}>Other Company Resources</option>
         </select>
       </div>
       <div class="form-group"><label>Version</label><input id="cd-ver" value="${doc&&doc.version?doc.version:''}" placeholder="e.g. 2.1" /></div>
@@ -5337,7 +5338,7 @@ function finaliseApplicantImport() {
 // ===== USER MANAGEMENT PAGE =====
 function buildUsersPage() {
   if (currentRole !== 'admin') return '<div class="page-header"><h1>Access Denied</h1></div>';
-  const roleColors = { admin: 'badge-violet', manager: 'badge-blue', employee: 'badge-green', 'manager+employee': 'badge-amber' };
+  const roleColors = { admin: 'badge-violet', manager: 'badge-amber', employee: 'badge-green', 'manager+employee': 'badge-amber' };
   return `
     <div class="page-header">
       <div><h1>User Management</h1><p>Manage logins, roles and excavation assignments for all staff</p></div>
@@ -5479,10 +5480,9 @@ function openAddUser() {
       <div class="form-row">
         <div class="form-group"><label>Role *</label>
           <select id="nu-role">
-            <option value="employee">Employee — Self-service portal only</option>
-            <option value="manager">Manager — Team management + own timesheets</option>
-            <option value="manager+employee">Manager + Employee — Two portals, one login</option>
-            <option value="admin">Admin — Full access</option>
+            <option value="employee">Employee</option>
+            <option value="manager+employee">Manager + Employee</option>
+            <option value="admin">Admin</option>
           </select>
         </div>
         <div class="form-group"><label>Site / Department</label>
@@ -5559,10 +5559,9 @@ function editUser(userId) {
       <div class="form-row">
         <div class="form-group"><label>Role</label>
           <select id="eu-role">
-            <option value="employee" ${u.role==='employee'?'selected':''}>Employee — Self-service portal only</option>
-            <option value="manager" ${u.role==='manager'?'selected':''}>Manager — Team management + own timesheets</option>
-            <option value="manager+employee" ${u.role==='manager+employee'?'selected':''}>Manager + Employee — Two portals, one login</option>
-            <option value="admin" ${u.role==='admin'?'selected':''}>Admin — Full access</option>
+            <option value="employee" ${u.role==='employee'?'selected':''}>Employee</option>
+            <option value="manager+employee" ${(u.role==='manager+employee'||u.role==='manager')?'selected':''}>Manager + Employee</option>
+            <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
           </select>
         </div>
         <div class="form-group"><label>Excavation Site</label>
@@ -10441,42 +10440,75 @@ function saveEmpProfile(empId) {
 }
 
 // ── Employee: Documents ──────────────────────────────────────
-function renderEmpDocs() {
+const DOC_CATEGORIES = ['HR', 'Payroll', 'H&S', 'Field Resources', 'Other Company Resources'];
+
+function renderEmpDocs(activeTab) {
   const panel = document.getElementById('emp-docs');
   if (!panel) return;
   const emp = window._empRecord;
-  const companyDocs = (DB.companyDocs||[]).filter(d => d.visibleToAll !== false);
+  const tab = activeTab || window._empDocsTab || 'HR';
+  window._empDocsTab = tab;
+
+  const allCompanyDocs = (DB.companyDocs||[]).filter(d => d.visibleToAll !== false);
   const myDocs = emp ? (DB.employeeDocs||[]).filter(d => d.employeeId === emp.id) : [];
+
+  // Docs for active tab — "Other Company Resources" also shows my personal uploads
+  const isMyDocsTab = tab === 'Other Company Resources';
+  const tabDocs = allCompanyDocs.filter(d => {
+    const cat = (d.category||'Other Company Resources');
+    if (tab === 'Other Company Resources') return cat === 'Other Company Resources' || !DOC_CATEGORIES.slice(0,-1).includes(cat);
+    return cat === tab;
+  });
 
   panel.innerHTML = `
     <div class="mgr-section">
-      <h3 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--ink);margin-bottom:16px">Documents</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--ink)">Documents</h3>
+        <button class="btn-secondary" style="font-size:0.75rem;padding:6px 12px" onclick="openEmpDocUpload()">+ Upload My Document</button>
+      </div>
 
-      <div style="font-size:0.8rem;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Company Documents</div>
-      ${companyDocs.length === 0 ?
-        `<div class="mgr-card" style="text-align:center;padding:20px;color:var(--mist);margin-bottom:14px">No company documents available yet</div>` :
-        companyDocs.map(d=>`
+      <!-- Category tabs -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+        ${DOC_CATEGORIES.map(cat => `
+          <button onclick="renderEmpDocs('${cat}')"
+            style="padding:7px 14px;border-radius:20px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid ${tab===cat?'var(--emerald)':'var(--cloud)'};background:${tab===cat?'var(--emerald)':'var(--white)'};color:${tab===cat?'var(--white)':'var(--slate)'};transition:all 0.15s">
+            ${cat}
+            ${allCompanyDocs.filter(d=>(d.category||'Other Company Resources')===cat||(cat==='Other Company Resources'&&!DOC_CATEGORIES.slice(0,-1).includes(d.category||''))).length > 0
+              ? `<span style="margin-left:4px;background:${tab===cat?'rgba(255,255,255,0.3)':'rgba(0,184,122,0.12)'};color:${tab===cat?'var(--white)':'var(--emerald)'};border-radius:10px;padding:1px 6px;font-size:0.68rem">${allCompanyDocs.filter(d=>(d.category||'Other Company Resources')===cat||(cat==='Other Company Resources'&&!DOC_CATEGORIES.slice(0,-1).includes(d.category||''))).length}</span>`
+              : ''}
+          </button>`).join('')}
+      </div>
+
+      <!-- Tab content -->
+      ${tabDocs.length === 0 && !(isMyDocsTab && myDocs.length > 0) ? `
+        <div class="mgr-card" style="text-align:center;padding:28px;color:var(--mist)">
+          <div style="font-size:1.8rem;margin-bottom:8px">📂</div>
+          <div style="font-weight:600;margin-bottom:4px">No ${tab} documents yet</div>
+          <div style="font-size:0.78rem">HR will upload documents here as they become available</div>
+        </div>` :
+        tabDocs.map(d => `
           <div class="mgr-card" style="margin-bottom:8px">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div>
-                <div style="font-weight:600;font-size:0.85rem">${d.name||d.title||'Document'}</div>
-                <div style="font-size:0.74rem;color:var(--mist)">${d.category||''} · ${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE'):''}</div>
+                <div style="font-weight:600;font-size:0.88rem;color:var(--ink)">${d.name||d.title||'Document'}</div>
+                <div style="font-size:0.74rem;color:var(--mist);margin-top:2px">${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE',{day:'2-digit',month:'short',year:'numeric'}):''}</div>
               </div>
-              ${d.url?`<a href="${d.url}" target="_blank" class="btn-secondary" style="font-size:0.75rem;padding:5px 10px;text-decoration:none">View</a>`:''}
+              ${d.url ? `<a href="${d.url}" target="_blank" style="padding:6px 14px;border-radius:8px;background:var(--emerald);color:var(--white);font-size:0.76rem;font-weight:600;text-decoration:none">View</a>` : '<span style="font-size:0.74rem;color:var(--mist)">No link</span>'}
             </div>
           </div>`).join('')}
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
-        <div style="font-size:0.8rem;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em">My Documents</div>
-        <button class="btn-secondary" style="font-size:0.75rem;padding:5px 12px" onclick="openEmpDocUpload()">+ Upload</button>
-      </div>
-      ${myDocs.length === 0 ?
-        `<div class="mgr-card" style="text-align:center;padding:20px;color:var(--mist)">No documents uploaded yet</div>` :
-        myDocs.map(d=>`
-          <div class="mgr-card" style="margin-bottom:8px">
-            <div style="font-weight:600;font-size:0.85rem">${d.name||'Document'}</div>
-            <div style="font-size:0.74rem;color:var(--mist)">${d.type||''} · ${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE'):''}</div>
-          </div>`).join('')}
+      ${isMyDocsTab ? `
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--cloud)">
+          <div style="font-size:0.78rem;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">My Uploaded Documents</div>
+          ${myDocs.length === 0 ?
+            `<div class="mgr-card" style="text-align:center;padding:16px;color:var(--mist);font-size:0.82rem">You haven't uploaded any documents yet</div>` :
+            myDocs.map(d=>`
+              <div class="mgr-card" style="margin-bottom:8px">
+                <div style="font-weight:600;font-size:0.85rem">${d.name||'Document'}</div>
+                <div style="font-size:0.74rem;color:var(--mist)">${d.type||''} · ${d.uploadedAt?new Date(d.uploadedAt).toLocaleDateString('en-IE'):''} · <span style="color:var(--amber)">${d.status||'pending'}</span></div>
+                ${d.notes?`<div style="font-size:0.74rem;font-style:italic;color:var(--slate);margin-top:2px">${d.notes}</div>`:''}
+              </div>`).join('')}
+        </div>` : ''}
     </div>`;
 }
 
