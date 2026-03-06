@@ -10226,11 +10226,54 @@ function renderEmpLeave() {
   const panel = document.getElementById('emp-leave');
   if (!panel) return;
   const emp = window._empRecord;
+  const thisYear = new Date().getFullYear();
+
+  // Leave records for this employee, this year
   const myLeave = (DB.leaveRequests||[]).filter(l => emp ? l.employeeId === emp.id : false);
-  const alUsed = myLeave.filter(l=>l.type==='Annual Leave'&&l.status==='approved').reduce((s,l)=>s+(l.days||0),0);
-  const alEnt = emp?.annualLeaveEntitlement || 0;
-  const sickUsed = myLeave.filter(l=>l.type==='Sick Leave'&&l.status==='approved').reduce((s,l)=>s+(l.days||0),0);
+  const myLeaveThisYear = myLeave.filter(l => l.startDate?.startsWith(thisYear));
+
+  const alUsed = myLeaveThisYear.filter(l => l.type==='Annual Leave' && l.status==='approved').reduce((s,l) => s+(l.days||0), 0);
+  const alPending = myLeaveThisYear.filter(l => l.type==='Annual Leave' && l.status==='pending').reduce((s,l) => s+(l.days||0), 0);
+  const sickUsed = myLeaveThisYear.filter(l => l.type==='Sick Leave' && l.status==='approved').reduce((s,l) => s+(l.days||0), 0);
+
+  // Contract type logic
+  const contractType = emp?.contractType || 'Permanent';
+  const PERMANENT_TYPES = ['Permanent', 'Probationary'];
+  const isPermanent = PERMANENT_TYPES.includes(contractType);
+
+  // Permanent: 20 days fixed entitlement
+  const PERM_ENTITLEMENT = 20;
+
+  // Temporary / SPC: 8% of hours worked
+  // Hours worked = weeklyHours * weeks worked this year (from start date or Jan 1)
+  let tempEntitlementHours = 0;
+  let tempEntitlementDays = 0;
+  let weeksWorked = 0;
+  let weeklyHrs = 0;
+  let totalHrsWorked = 0;
+
+  if (!isPermanent) {
+    weeklyHrs = parseFloat(emp?.weeklyHours || 37.5);
+    const yearStart = new Date(`${thisYear}-01-01`);
+    const empStart = emp?.startDate ? new Date(emp.startDate) : yearStart;
+    const fromDate = empStart > yearStart ? empStart : yearStart;
+    const today = new Date();
+    const msWorked = today - fromDate;
+    weeksWorked = Math.max(0, msWorked / (7 * 24 * 60 * 60 * 1000));
+    totalHrsWorked = weeksWorked * weeklyHrs;
+    tempEntitlementHours = totalHrsWorked * 0.08;
+    // Convert to days based on their daily hours
+    const dailyHrs = weeklyHrs / 5;
+    tempEntitlementDays = dailyHrs > 0 ? tempEntitlementHours / dailyHrs : 0;
+  }
+
+  const entitlementDays = isPermanent ? PERM_ENTITLEMENT : Math.round(tempEntitlementDays * 10) / 10;
+  const remaining = Math.max(0, entitlementDays - alUsed);
+  const pct = entitlementDays > 0 ? Math.min(100, Math.round((alUsed / entitlementDays) * 100)) : 0;
   const fmt = d => d ? new Date(d).toLocaleDateString('en-IE',{day:'2-digit',month:'short',year:'numeric'}) : '';
+
+  // Summary card colour
+  const remainingColor = remaining <= 3 ? 'var(--rose)' : remaining <= 7 ? 'var(--amber)' : 'var(--emerald)';
 
   panel.innerHTML = `
     <div class="mgr-section">
@@ -10239,32 +10282,165 @@ function renderEmpLeave() {
         <button class="approve-btn" style="width:auto;padding:8px 16px;font-size:0.82rem" onclick="openEmpLeaveRequest()">+ Request Leave</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-        <div class="mgr-card" style="text-align:center">
-          <div style="font-size:0.72rem;color:var(--mist);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Annual Leave</div>
-          <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--emerald)">${alEnt - alUsed}</div>
-          <div style="font-size:0.74rem;color:var(--mist)">days remaining of ${alEnt}</div>
-          <div style="margin-top:6px;background:var(--cloud);border-radius:4px;height:6px"><div style="background:var(--emerald);height:6px;border-radius:4px;width:${alEnt>0?Math.min(100,Math.round(alUsed/alEnt*100)):0}%"></div></div>
+      <!-- Quick stats row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+        <div class="mgr-card" style="text-align:center;padding:14px">
+          <div style="font-size:0.68rem;color:var(--mist);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">AL Used</div>
+          <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--ink)">${alUsed}</div>
+          <div style="font-size:0.72rem;color:var(--mist)">days this year</div>
         </div>
-        <div class="mgr-card" style="text-align:center">
-          <div style="font-size:0.72rem;color:var(--mist);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Sick Leave</div>
-          <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--amber)">${sickUsed}</div>
-          <div style="font-size:0.74rem;color:var(--mist)">days used (5 max per year)</div>
+        <div class="mgr-card" style="text-align:center;padding:14px">
+          <div style="font-size:0.68rem;color:var(--mist);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">AL Remaining</div>
+          <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:${remainingColor}">${typeof remaining === 'number' ? remaining.toFixed(isPermanent?0:1) : remaining}</div>
+          <div style="font-size:0.72rem;color:var(--mist)">days left</div>
+        </div>
+        <div class="mgr-card" style="text-align:center;padding:14px">
+          <div style="font-size:0.68rem;color:var(--mist);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Sick Leave</div>
+          <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--amber)">${sickUsed}</div>
+          <div style="font-size:0.72rem;color:var(--mist)">days used</div>
         </div>
       </div>
 
-      ${myLeave.length === 0 ? `<div class="mgr-card" style="text-align:center;padding:24px;color:var(--mist)">No leave records yet</div>` :
-        [...myLeave].sort((a,b)=>b.startDate?.localeCompare(a.startDate)).map(l => `
-          <div class="mgr-card" style="margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div>
-                <div style="font-weight:600;font-size:0.85rem;color:var(--ink)">${l.type}</div>
-                <div style="font-size:0.76rem;color:var(--mist)">${fmt(l.startDate)} – ${fmt(l.endDate)} · ${l.days} day${l.days!==1?'s':''}</div>
-                ${l.notes?`<div style="font-size:0.74rem;font-style:italic;color:var(--slate)">"${l.notes}"</div>`:''}
+      <!-- Progress bar -->
+      <div class="mgr-card" style="margin-bottom:16px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--ink)">Annual Leave Used</div>
+          <div style="font-size:0.8rem;color:var(--mist)">${alUsed} of ${entitlementDays}${isPermanent?'':' (est.)'} days</div>
+        </div>
+        <div style="background:var(--cloud);border-radius:6px;height:8px;overflow:hidden">
+          <div style="background:${pct>=90?'var(--rose)':pct>=70?'var(--amber)':'var(--emerald)'};height:8px;border-radius:6px;width:${pct}%;transition:width 0.4s"></div>
+        </div>
+        ${alPending > 0 ? `<div style="font-size:0.74rem;color:var(--amber);margin-top:6px">⏳ ${alPending} day${alPending!==1?'s':''} pending approval</div>` : ''}
+      </div>
+
+      <!-- Leave history -->
+      <div style="margin-bottom:12px">
+        ${myLeave.length === 0 ?
+          `<div class="mgr-card" style="text-align:center;padding:24px;color:var(--mist)">No leave records yet</div>` :
+          [...myLeave].sort((a,b) => (b.startDate||'').localeCompare(a.startDate||'')).map(l => `
+            <div class="mgr-card" style="margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-weight:600;font-size:0.85rem;color:var(--ink)">${l.type}</div>
+                  <div style="font-size:0.76rem;color:var(--mist)">${fmt(l.startDate)} – ${fmt(l.endDate)} · ${l.days} day${l.days!==1?'s':''}</div>
+                  ${l.notes?`<div style="font-size:0.74rem;font-style:italic;color:var(--slate)">"${l.notes}"</div>`:''}
+                </div>
+                <span class="badge badge-${l.status==='approved'?'green':l.status==='pending'?'amber':'gray'}" style="font-size:0.7rem">${l.status}</span>
               </div>
-              <span class="badge badge-${l.status==='approved'?'green':l.status==='pending'?'amber':'gray'}" style="font-size:0.7rem">${l.status}</span>
+            </div>`).join('')}
+      </div>
+
+      <!-- Summary table -->
+      <div style="border:1.5px solid var(--cloud);border-radius:12px;overflow:hidden;margin-bottom:14px">
+        <div style="background:var(--ink);padding:10px 16px">
+          <div style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.06em">Annual Leave Summary — ${thisYear}</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--snow)">
+              <th style="padding:9px 14px;text-align:left;font-size:0.72rem;font-weight:700;color:var(--mist);text-transform:uppercase;letter-spacing:0.04em">Item</th>
+              <th style="padding:9px 14px;text-align:right;font-size:0.72rem;font-weight:700;color:var(--mist);text-transform:uppercase;letter-spacing:0.04em">Days</th>
+              <th style="padding:9px 14px;text-align:left;font-size:0.72rem;font-weight:700;color:var(--mist);text-transform:uppercase;letter-spacing:0.04em">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-top:1px solid var(--cloud)">
+              <td style="padding:10px 14px;font-size:0.84rem;color:var(--ink);font-weight:600">Total AL entitlement</td>
+              <td style="padding:10px 14px;text-align:right;font-weight:800;font-size:0.95rem;color:var(--ink)">${isPermanent ? PERM_ENTITLEMENT : entitlementDays.toFixed(1)}</td>
+              <td style="padding:10px 14px;font-size:0.76rem;color:var(--mist)">${isPermanent ? 'Permanent contract — statutory 20 days' : contractType+' — 8% of hours worked to date'}</td>
+            </tr>
+            <tr style="border-top:1px solid var(--cloud);background:rgba(0,184,122,0.04)">
+              <td style="padding:10px 14px;font-size:0.84rem;color:var(--ink);font-weight:600">AL accrued to today</td>
+              <td style="padding:10px 14px;text-align:right;font-weight:800;font-size:0.95rem;color:var(--emerald)">${isPermanent ? (()=>{ const doy=Math.ceil((new Date()-new Date(thisYear+'-01-01'))/(86400000)); return Math.min(PERM_ENTITLEMENT,+(PERM_ENTITLEMENT/365*doy).toFixed(1)); })() : tempEntitlementDays.toFixed(1)}</td>
+              <td style="padding:10px 14px;font-size:0.76rem;color:var(--mist)">${isPermanent ? 'Pro-rata of 20 days to '+new Date().toLocaleDateString('en-IE',{day:'2-digit',month:'short'}) : '8% of hrs worked to '+new Date().toLocaleDateString('en-IE',{day:'2-digit',month:'short'})}</td>
+            </tr>
+            <tr style="border-top:1px solid var(--cloud);background:rgba(245,158,11,0.04)">
+              <td style="padding:10px 14px;font-size:0.84rem;color:var(--ink);font-weight:600">AL taken</td>
+              <td style="padding:10px 14px;text-align:right;font-weight:800;font-size:0.95rem;color:var(--amber)">${alUsed}</td>
+              <td style="padding:10px 14px;font-size:0.76rem;color:var(--mist)">Approved leave in ${thisYear}</td>
+            </tr>
+            ${alPending > 0 ? `
+            <tr style="border-top:1px solid var(--cloud);background:rgba(245,158,11,0.04)">
+              <td style="padding:10px 14px;font-size:0.84rem;color:var(--ink);font-weight:600">AL pending</td>
+              <td style="padding:10px 14px;text-align:right;font-weight:800;font-size:0.95rem;color:var(--amber)">${alPending}</td>
+              <td style="padding:10px 14px;font-size:0.76rem;color:var(--mist)">Awaiting manager approval</td>
+            </tr>` : ''}
+            <tr style="border-top:2px solid var(--emerald);background:rgba(0,184,122,0.05)">
+              <td style="padding:11px 14px;font-size:0.88rem;color:var(--ink);font-weight:700">AL left to take</td>
+              <td style="padding:11px 14px;text-align:right;font-weight:900;font-size:1.05rem;color:${remaining<=3?'var(--rose)':remaining<=7?'var(--amber)':'var(--emerald)'}">${isPermanent ? remaining : remaining.toFixed(1)}</td>
+              <td style="padding:11px 14px;font-size:0.76rem;color:var(--mist)">Before 31 Dec ${thisYear}${alPending>0?' (excl. pending)':''}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Entitlement summary panel at bottom -->
+      <div style="background:var(--ink);border-radius:12px;padding:16px 18px;margin-top:4px">
+        <div style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">
+          Annual Leave Summary — ${thisYear}
+        </div>
+
+        ${isPermanent ? `
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Total entitlement (${thisYear})</span>
+              <span style="font-weight:700;color:var(--white);font-size:0.88rem">${PERM_ENTITLEMENT} days</span>
             </div>
-          </div>`).join('')}
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Holidays used</span>
+              <span style="font-weight:700;color:var(--amber);font-size:0.88rem">${alUsed} days</span>
+            </div>
+            ${alPending > 0 ? `
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Pending approval</span>
+              <span style="font-weight:700;color:var(--amber);font-size:0.88rem">${alPending} days</span>
+            </div>` : ''}
+            <div style="height:1px;background:rgba(255,255,255,0.1);margin:4px 0"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;font-weight:700;color:var(--white)">AL days remaining</span>
+              <span style="font-weight:800;font-size:1rem;color:${remaining<=3?'var(--rose)':remaining<=7?'var(--amber)':'var(--emerald)'}">${remaining} days</span>
+            </div>
+          </div>
+          <div style="font-size:0.7rem;color:rgba(255,255,255,0.3);margin-top:10px">
+            Permanent contract · Statutory entitlement: ${PERM_ENTITLEMENT} days per year
+          </div>` :
+
+        `
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Contract type</span>
+              <span style="font-weight:600;color:var(--white);font-size:0.84rem">${contractType}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Weekly hours</span>
+              <span style="font-weight:600;color:var(--white);font-size:0.84rem">${weeklyHrs}h</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Weeks worked in ${thisYear}</span>
+              <span style="font-weight:600;color:var(--white);font-size:0.84rem">${weeksWorked.toFixed(1)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Total hours worked</span>
+              <span style="font-weight:600;color:var(--white);font-size:0.84rem">${Math.round(totalHrsWorked)}h</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">AL accrued (8% of hrs)</span>
+              <span style="font-weight:700;color:var(--white);font-size:0.88rem">${tempEntitlementHours.toFixed(1)}h / ${tempEntitlementDays.toFixed(1)} days (est.)</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;color:rgba(255,255,255,0.7)">Holidays used</span>
+              <span style="font-weight:700;color:var(--amber);font-size:0.88rem">${alUsed} days</span>
+            </div>
+            <div style="height:1px;background:rgba(255,255,255,0.1);margin:4px 0"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:0.83rem;font-weight:700;color:var(--white)">AL days remaining</span>
+              <span style="font-weight:800;font-size:1rem;color:${remaining<=1?'var(--rose)':remaining<=3?'var(--amber)':'var(--emerald)'}">${remaining.toFixed(1)} days</span>
+            </div>
+          </div>
+          <div style="font-size:0.7rem;color:rgba(255,255,255,0.3);margin-top:10px">
+            ${contractType} contract · Entitlement based on 8% of hours worked (Organisation of Working Time Act 1997)
+          </div>`}
+      </div>
     </div>`;
 }
 
